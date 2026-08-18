@@ -31,18 +31,15 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
   @override
   void initState() {
     super.initState();
-    // 🔒 ATIVA A SEGURANÇA TOTAL ASSIM QUE O APP ABRE
     activarProtecaoDeTela();
   }
 
   void activarProtecaoDeTela() async {
-    // Versão atualizada do pacote usa preventScreenshotOn para bloquear tudo no iOS
     await ScreenProtector.preventScreenshotOn();
   }
 
   @override
   void dispose() {
-    // Desativa ao fechar o app
     ScreenProtector.preventScreenshotOff();
     super.dispose();
   }
@@ -50,16 +47,26 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black, // Fundo preto elegante para o player
+      backgroundColor: Colors.black,
       body: SafeArea(
         child: InAppWebView(
           initialUrlRequest: URLRequest(
             url: WebUri("https://aluno.conserlar.com"),
           ),
           initialSettings: InAppWebViewSettings(
-            javaScriptEnabled: true, // Necessário para o player da Bunny rodar os scripts
-            allowsInlineMediaPlayback: true, // Permite que os vídeos rodem direto na página
+            javaScriptEnabled: true,
+            allowsInlineMediaPlayback: true,
+            allowsPictureInPictureMediaPlayback: false, // Trava o PiP
+            
+            // 🔒 SEU USER AGENT PERSONALIZADO (Mude a palavra "MinhaChaveSecretaConserlar" para o que quiser)
+            userAgent: "iphoneconserlar2026",
           ),
+          onEnterFullscreen: (controller) async {
+            await ScreenProtector.preventScreenshotOn();
+          },
+          onExitFullscreen: (controller) async {
+            await ScreenProtector.preventScreenshotOn();
+          },
         ),
       ),
     );
