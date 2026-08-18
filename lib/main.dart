@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:screen_protector/screen_protector.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 🔒 Garante a proteção logo no arranque do app (evita print nos primeiros ms)
+  await ScreenProtector.preventScreenshotOn();
+
   runApp(const MyApp());
 }
 
@@ -31,16 +35,19 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
   @override
   void initState() {
     super.initState();
-    activarProtecaoDeTela();
+    _ativarSeguranca();
   }
 
-  void activarProtecaoDeTela() async {
+  Future<void> _ativarSeguranca() async {
     await ScreenProtector.preventScreenshotOn();
+    // Protege contra vazamento/gravação de tela em segundo plano
+    await ScreenProtector.protectDataLeakageOn();
   }
 
   @override
   void dispose() {
-    ScreenProtector.preventScreenshotOff();
+    // Mantemos comentado ou evitamos desligar para que o app continue seguro
+    // ScreenProtector.preventScreenshotOff();
     super.dispose();
   }
 
@@ -53,14 +60,22 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
           initialUrlRequest: URLRequest(
             url: WebUri("https://aluno.conserlar.com"),
           ),
+          
+          // 🚫 Oculta menus de contexto e toque longo (evita copiar/salvar mídia)
+          contextMenu: ContextMenu(
+            settings: ContextMenuSettings(hideDefaultSystemContextMenuItems: true),
+          ),
+
           initialSettings: InAppWebViewSettings(
             javaScriptEnabled: true,
             allowsInlineMediaPlayback: true,
             allowsPictureInPictureMediaPlayback: false, // Trava o PiP
-            
-            // 🔒 SEU USER AGENT PERSONALIZADO (Mude a palavra "MinhaChaveSecretaConserlar" para o que quiser)
             userAgent: "iphoneconserlar2026",
+            disableLongPressContextMenuOnLinks: true, // Trava toque longo em links/imagens
+            supportZoom: false, // Evita zoom acidental na plataforma
           ),
+
+          // 🔄 Reforça a proteção ao entrar e sair do modo tela cheia do player
           onEnterFullscreen: (controller) async {
             await ScreenProtector.preventScreenshotOn();
           },
