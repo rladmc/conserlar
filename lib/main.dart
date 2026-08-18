@@ -54,7 +54,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
       body: SafeArea(
         child: InAppWebView(
           initialUrlRequest: URLRequest(
-            url: WebUri("https://conserlar.com"),
+            url: WebUri("https://aluno.conserlar.com"),
           ),
           initialSettings: InAppWebViewSettings(
             javaScriptEnabled: true, // Necessário para o player da Bunny rodar os scripts
