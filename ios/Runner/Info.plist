@@ -66,5 +66,15 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	
+	<!-- Permissões para Transmissão e Rede Local (Chromecast, AirPlay, DLNA) -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Precisamos acessar sua rede local para permitir a transmissão de aulas para a sua Smart TV.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_googlecast._tcp</string>
+        <string>_dlna._tcp</string>
+    </array>
+
 </dict>
 </plist>

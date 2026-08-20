@@ -41,7 +41,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
   Future<void> _ativarSeguranca() async {
     await ScreenProtector.preventScreenshotOn();
     // Protege contra vazamento/gravação de tela em segundo plano
-    await ScreenProtector.protectDataLeakageOn();
+    //wait ScreenProtector.protectDataLeakageOn();
   }
 
   @override
