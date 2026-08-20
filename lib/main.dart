@@ -66,13 +66,13 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
             settings: ContextMenuSettings(hideDefaultSystemContextMenuItems: true),
           ),
 
-          initialSettings: InAppWebViewSettings(
+     initialSettings: InAppWebViewSettings(
             javaScriptEnabled: true,
-            allowsInlineMediaPlayback: true,
+            allowsInlineMediaPlayback: true, // Crucial para o vídeo rodar nativamente na tela
+            allowsAirPlayForMediaPlayback: true, // Libera o AirPlay para o player
             allowsPictureInPictureMediaPlayback: false, // Trava o PiP
             userAgent: "iphoneconserlar2026",
-            disableLongPressContextMenuOnLinks: true, // Trava toque longo em links/imagens
-            supportZoom: false, // Evita zoom acidental na plataforma
+            supportZoom: false,
           ),
 
           // 🔄 Reforça a proteção ao entrar e sair do modo tela cheia do player
