@@ -31,7 +31,8 @@ class TelaDeEstudosSegura extends StatefulWidget {
 }
 
 class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
-  
+  InAppWebViewController? webViewController;
+
   @override
   void initState() {
     super.initState();
@@ -40,14 +41,10 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
 
   Future<void> _ativarSeguranca() async {
     await ScreenProtector.preventScreenshotOn();
-    // Protege contra vazamento/gravação de tela em segundo plano
-    //wait ScreenProtector.protectDataLeakageOn();
   }
 
   @override
   void dispose() {
-    // Mantemos comentado ou evitamos desligar para que o app continue seguro
-    // ScreenProtector.preventScreenshotOff();
     super.dispose();
   }
 
@@ -55,6 +52,27 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: const Text("Conserlar - Área do Aluno"),
+        backgroundColor: Colors.black,
+        actions: [
+          // 📺 Botão de Chromecast
+          IconButton(
+            icon: const Icon(Icons.cast, color: Colors.white),
+            onPressed: () {
+              _mostrarDispositivosChromecast(context);
+            },
+          ),
+          
+          // 🍏 Botão de AirPlay
+          IconButton(
+            icon: const Icon(Icons.airplay, color: Colors.white),
+            onPressed: () {
+              _ativarAirPlayNativo();
+            },
+          ),
+        ],
+      ),
       body: SafeArea(
         child: InAppWebView(
           initialUrlRequest: URLRequest(
@@ -66,14 +84,19 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
             settings: ContextMenuSettings(hideDefaultSystemContextMenuItems: true),
           ),
 
-     initialSettings: InAppWebViewSettings(
+          initialSettings: InAppWebViewSettings(
             javaScriptEnabled: true,
-            allowsInlineMediaPlayback: true, // Crucial para o vídeo rodar nativamente na tela
-            allowsAirPlayForMediaPlayback: true, // Libera o AirPlay para o player
-            allowsPictureInPictureMediaPlayback: false, // Trava o PiP
+            allowsInlineMediaPlayback: true, // Mantém o vídeo rodando na tela do app
+            allowsAirPlayForMediaPlayback: true, // Libera o AirPlay nativo
+            mediaPlaybackRequiresUserGesture: false, // Libera o áudio automaticamente sem travar no iOS
+            allowsPictureInPictureMediaPlayback: false,
             userAgent: "iphoneconserlar2026",
             supportZoom: false,
           ),
+
+          onWebViewCreated: (controller) {
+            webViewController = controller;
+          },
 
           // 🔄 Reforça a proteção ao entrar e sair do modo tela cheia do player
           onEnterFullscreen: (controller) async {
@@ -84,6 +107,28 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
           },
         ),
       ),
+    );
+  }
+
+  void _mostrarDispositivosChromecast(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Transmitir via Chromecast"),
+        content: const Text("Buscando Smart TVs compatíveis na rede local..."),
+        actions: [
+          TextButton(
+            child: const Text("Fechar"),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _ativarAirPlayNativo() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Abra a Central de Controle do iPhone e selecione o AirPlay se necessário.")),
     );
   }
 }
