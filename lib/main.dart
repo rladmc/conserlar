@@ -44,11 +44,6 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
   }
 
   @override
-  void dispose() {
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
@@ -56,7 +51,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
         title: const Text("Conserlar - Área do Aluno"),
         backgroundColor: Colors.black,
         actions: [
-          // 📺 Botão de Chromecast
+          // 📺 Botão de Chromecast (Abre o aviso / seletor de rede)
           IconButton(
             icon: const Icon(Icons.cast, color: Colors.white),
             onPressed: () {
@@ -64,7 +59,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
             },
           ),
           
-          // 🍏 Botão de AirPlay
+          // 🍏 Botão de AirPlay (Instrução rápida para projeção sem corte de áudio)
           IconButton(
             icon: const Icon(Icons.airplay, color: Colors.white),
             onPressed: () {
@@ -114,11 +109,17 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Transmitir via Chromecast"),
-        content: const Text("Buscando Smart TVs compatíveis na rede local..."),
+        backgroundColor: Colors.grey[900],
+        title: const Text("Transmitir via Chromecast", style: TextStyle(color: Colors.white)),
+        content: const Text(
+          "Para espelhar a aula em TVs com Chromecast ou Android TV:\n\n"
+          "1. Abra a plataforma Conserlar pelo navegador Google Chrome no seu iPhone.\n"
+          "2. Utilize o botão de transmissão nativo do player web.",
+          style: TextStyle(color: Colors.white70),
+        ),
         actions: [
           TextButton(
-            child: const Text("Fechar"),
+            child: const Text("Entendi", style: TextStyle(color: Colors.blueAccent)),
             onPressed: () => Navigator.pop(context),
           ),
         ],
@@ -127,8 +128,24 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
   }
 
   void _ativarAirPlayNativo() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Abra a Central de Controle do iPhone e selecione o AirPlay se necessário.")),
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text("Transmitir via AirPlay", style: TextStyle(color: Colors.white)),
+        content: const Text(
+          "Você pode usar o botão de AirPlay direto no player da aula ou:\n\n"
+          "1. Deslize o canto superior direito do iPhone para baixo (Central de Controle).\n"
+          "2. Toque em Espelhamento de Tela para mandar imagem e som perfeitos para sua TV.",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            child: const Text("Fechar", style: TextStyle(color: Colors.blueAccent)),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
     );
   }
 }
