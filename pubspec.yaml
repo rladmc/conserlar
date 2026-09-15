@@ -37,8 +37,7 @@ dependencies:
   flutter_inappwebview: ^6.1.5
   screen_protector: ^1.5.3
   flutter_chrome_cast: ^1.1.0
-  lottie: ^3.3.0
-  
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
