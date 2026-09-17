@@ -476,7 +476,7 @@ class _ConserTestWebViewState extends State<ConserTestWebView> {
 }
 
 // ==========================================
-// TELA DO WEBVIEW PRIMEIRO ACESSO EEPROM (Foco total no iOS)
+// TELA DO WEBVIEW PRIMEIRO ACESSO EEPROM
 // ==========================================
 class PrimeiroEepromWebViewView extends StatefulWidget {
   const PrimeiroEepromWebViewView({super.key});
@@ -525,7 +525,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
             }
           },
           onWebResourceError: (WebResourceError error) {
-            debugPrint("Erro no WebView EEPROM iOS: ${error.description}");
+            debugPrint("Erro no WebView EEPROM: ${error.description}");
             setState(() {
               isLoading = false;
               hasError = true;
@@ -544,6 +544,24 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
     controller.reload();
   }
 
+  Future<void> _copiarRedeEInstruir(BuildContext context) async {
+    // Copia o nome exato da rede para a área de transferência
+    await Clipboard.setData(const ClipboardData(text: 'ConsertestScan - EEPROM'));
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            '📋 Nome da rede copiado! Vá em Ajustes > Wi-Fi e selecione: ConsertestScan - EEPROM',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: Color(0xFF238C00),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
   void _mostrarGuiaParaIphone(BuildContext context) {
     showDialog(
       context: context,
@@ -557,10 +575,10 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
           ),
           title: const Row(
             children: [
-              Icon(Icons.phone_iphone, color: Color(0xFFF1C40F), size: 28),
+              Icon(Icons.wifi, color: Color(0xFFF1C40F), size: 28),
               SizedBox(width: 10),
               Text(
-                "Conexão no iPhone",
+                "Conexão Wi-Fi da Placa",
                 style: TextStyle(color: Colors.white, fontSize: 18),
               ),
             ],
@@ -570,7 +588,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                "Como o iOS exige conexão manual com redes locais da placa, siga estes passos rápidos:",
+                "Para configurar a EEPROM, conecte o seu celular na rede Wi-Fi da placa:",
                 style: TextStyle(color: Color(0xFFBDC3C7), fontSize: 14),
               ),
               const SizedBox(height: 12),
@@ -600,7 +618,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
               ),
               const SizedBox(height: 12),
               const Text(
-                "1️⃣ Clique no botão abaixo para abrir os Ajustes.\n2️⃣ Toque em **Wi-Fi** e selecione a rede acima.\n3️⃣ Volte para este aplicativo.",
+                "1️⃣ Toque no botão abaixo para **copiar o nome da rede**.\n2️⃣ Abra os **Ajustes > Wi-Fi** do seu celular e conecte-se.\n3️⃣ Volte para este aplicativo.",
                 style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
               ),
             ],
@@ -617,14 +635,12 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
                   ),
                 ),
                 child: const Text(
-                  "ABRIR AJUSTES DO IPHONE",
+                  "COPIAR NOME DA REDE",
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                 ),
-                onPressed: () async {
+                onPressed: () {
                   Navigator.of(context).pop();
-                  try {
-                    await launchUrl(Uri.parse('App-Prefs:WIFI'), mode: LaunchMode.externalApplication);
-                  } catch (_) {}
+                  _copiarRedeEInstruir(context);
                 },
               ),
             ),
@@ -682,7 +698,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
                       ),
                       const SizedBox(height: 12),
                       const Text(
-                        "Certifique-se de que o seu iPhone está conectado na rede:\n\n👉 ConsertestScan - EEPROM\n\nAssim que conectar, toque no botão abaixo.",
+                        "Certifique-se de que o seu celular está conectado na rede:\n\n👉 ConsertestScan - EEPROM\n\nAssim que conectar, toque no botão abaixo.",
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Color(0xFFBDC3C7),
@@ -717,10 +733,10 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
                       TextButton.icon(
                         icon: const Icon(Icons.settings, color: Color(0xFFF1C40F), size: 18),
                         label: const Text(
-                          "Abrir Ajustes do iPhone Novamente",
+                          "Copiar Nome da Rede Novamente",
                           style: TextStyle(color: Color(0xFFF1C40F), fontSize: 13),
                         ),
-                        onPressed: () => _mostrarGuiaParaIphone(context),
+                        onPressed: () => _copiarRedeEInstruir(context),
                       ),
                     ],
                   ),
