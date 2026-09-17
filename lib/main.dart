@@ -476,7 +476,7 @@ class _ConserTestWebViewState extends State<ConserTestWebView> {
 }
 
 // ==========================================
-// TELA DO WEBVIEW PRIMEIRO ACESSO EEPROM (Com Tratamento de Erro e Recarregamento)
+// TELA DO WEBVIEW PRIMEIRO ACESSO EEPROM (Foco total no iOS)
 // ==========================================
 class PrimeiroEepromWebViewView extends StatefulWidget {
   const PrimeiroEepromWebViewView({super.key});
@@ -488,16 +488,15 @@ class PrimeiroEepromWebViewView extends StatefulWidget {
 class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
   late final WebViewController controller;
   bool isLoading = true;
-  bool hasError = false; // Controla se deu erro de conexão
+  bool hasError = false;
 
   @override
   void initState() {
     super.initState();
     _inicializarWebView();
 
-    // Abre o guia visual explicativo logo que a tela carrega
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _mostrarGuiaParaLeigos(context);
+      _mostrarGuiaParaIphone(context);
     });
   }
 
@@ -517,7 +516,6 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
               isLoading = false;
               hasError = false;
             });
-            // Detecta se acessou a rota /salvar para retornar à tela anterior
             if (url.contains("/salvar")) {
               Future.delayed(const Duration(seconds: 2), () {
                 if (mounted) {
@@ -527,7 +525,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
             }
           },
           onWebResourceError: (WebResourceError error) {
-            debugPrint("Erro no WebView EEPROM: ${error.description}");
+            debugPrint("Erro no WebView EEPROM iOS: ${error.description}");
             setState(() {
               isLoading = false;
               hasError = true;
@@ -546,7 +544,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
     controller.reload();
   }
 
-  void _mostrarGuiaParaLeigos(BuildContext context) {
+  void _mostrarGuiaParaIphone(BuildContext context) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -559,10 +557,10 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
           ),
           title: const Row(
             children: [
-              Icon(Icons.wifi, color: Color(0xFFF1C40F), size: 28),
+              Icon(Icons.phone_iphone, color: Color(0xFFF1C40F), size: 28),
               SizedBox(width: 10),
               Text(
-                "Atenção, Passo Único!",
+                "Conexão no iPhone",
                 style: TextStyle(color: Colors.white, fontSize: 18),
               ),
             ],
@@ -572,10 +570,10 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                "Para conectar no testador do seu iPhone, siga estes 3 passos simples:",
+                "Como o iOS exige conexão manual com redes locais da placa, siga estes passos rápidos:",
                 style: TextStyle(color: Color(0xFFBDC3C7), fontSize: 14),
               ),
-              const SizedBox(height: 15),
+              const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -585,7 +583,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.check_circle, color: Colors.green, size: 20),
+                    Icon(Icons.wifi, color: Colors.green, size: 20),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -593,16 +591,16 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
-                          fontSize: 15,
+                          fontSize: 14,
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 15),
+              const SizedBox(height: 12),
               const Text(
-                "1️⃣ Clique no botão verde abaixo para abrir os Ajustes.\n2️⃣ Conecte-se na rede Wi-Fi acima.\n3️⃣ Volte para o aplicativo e pronto!",
+                "1️⃣ Clique no botão abaixo para abrir os Ajustes.\n2️⃣ Toque em **Wi-Fi** e selecione a rede acima.\n3️⃣ Volte para este aplicativo.",
                 style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
               ),
             ],
@@ -619,22 +617,17 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
                   ),
                 ),
                 child: const Text(
-                  "ABRIR AJUSTES DE WI-FI AGORA",
+                  "ABRIR AJUSTES DO IPHONE",
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                 ),
                 onPressed: () async {
                   Navigator.of(context).pop();
                   try {
                     await launchUrl(
-                      Uri.parse('App-Prefs:WIFI'),
-                      mode: LaunchMode.externalApplication,
-                    );
-                  } catch (_) {
-                    await launchUrl(
                       Uri.parse('app-settings:'),
                       mode: LaunchMode.externalApplication,
                     );
-                  }
+                  } catch (_) {}
                 },
               ),
             ),
@@ -658,7 +651,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline, color: Color(0xFFF1C40F)),
-            onPressed: () => _mostrarGuiaParaLeigos(context),
+            onPressed: () => _mostrarGuiaParaIphone(context),
             tooltip: "Ajuda com o Wi-Fi",
           ),
         ],
@@ -666,10 +659,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
       body: SafeArea(
         child: Stack(
           children: [
-            // O WebView principal
             WebViewWidget(controller: controller),
-
-            // Tela de Erro Amigável Customizada caso caia a conexão ou o IP não responda
             if (hasError)
               Container(
                 color: const Color(0xFF37474F),
@@ -695,7 +685,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
                       ),
                       const SizedBox(height: 12),
                       const Text(
-                        "Certifique-se de que o seu iPhone está conectado na rede Wi-Fi:\n\n👉 ConsertestScan - EEPROM\n\nAssim que conectar, toque no botão abaixo para atualizar.",
+                        "Certifique-se de que o seu iPhone está conectado na rede:\n\n👉 ConsertestScan - EEPROM\n\nAssim que conectar, toque no botão abaixo.",
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Color(0xFFBDC3C7),
@@ -728,19 +718,17 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
                       ),
                       const SizedBox(height: 15),
                       TextButton.icon(
-                        icon: const Icon(Icons.settings_ethernet, color: Color(0xFFF1C40F), size: 18),
+                        icon: const Icon(Icons.settings, color: Color(0xFFF1C40F), size: 18),
                         label: const Text(
-                          "Ver Instruções de Wi-Fi Novamente",
+                          "Abrir Ajustes do iPhone Novamente",
                           style: TextStyle(color: Color(0xFFF1C40F), fontSize: 13),
                         ),
-                        onPressed: () => _mostrarGuiaParaLeigos(context),
+                        onPressed: () => _mostrarGuiaParaIphone(context),
                       ),
                     ],
                   ),
                 ),
               ),
-
-            // Indicador de carregamento padrão
             if (isLoading && !hasError)
               const Center(
                 child: CircularProgressIndicator(
