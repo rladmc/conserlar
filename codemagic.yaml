@@ -1,15 +1,17 @@
 workflows:
-  conserlar-android:
-    name: Conserlar App - Android
+  conserlar-ios-ipa:
+    name: Conserlar iOS IPA (AltStore)
     max_build_duration: 30
     environment:
       flutter: stable
+      xcode: latest
+      cocoapods: default
     scripts:
-      - name: Instalar dependências
+      - name: Obter dependências do Flutter
         script: |
           flutter pub get
-      - name: Construir APK de Release
+      - name: Construir IPA para iOS
         script: |
-          flutter build apk --release
+          flutter build ipa --release --no-codesign
     artifacts:
-      - build/app/outputs/flutter-apk/*.apk
+      - build/ios/ipa/*.ipa
