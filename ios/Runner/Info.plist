@@ -77,9 +77,11 @@
 
     <!-- Autorização para abrir os Ajustes do iOS a partir do app -->
     <key>LSApplicationQueriesSchemes</key>
-    <array>
-        <string>app-settings</string>
-    </array>
+        <array>
+            <string>app-settings</string>
+            <string>App-Prefs</string>
+            <string>prefs</string>
+        </array>
 
 </dict>
 </plist>

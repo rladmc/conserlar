@@ -623,10 +623,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
                 onPressed: () async {
                   Navigator.of(context).pop();
                   try {
-                    await launchUrl(
-                      Uri.parse('app-settings:'),
-                      mode: LaunchMode.externalApplication,
-                    );
+                    await launchUrl(Uri.parse('App-Prefs:WIFI'), mode: LaunchMode.externalApplication);
                   } catch (_) {}
                 },
               ),
