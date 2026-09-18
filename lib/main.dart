@@ -738,7 +738,7 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
 }
 
 // ==========================================
-// TELA DA PLATAFORMA DO ALUNO (BLINDAGEM DE IFRAME E TELA PRETA)
+// TELA DA PLATAFORMA DO ALUNO (COM TELA PRETA, BLINDAGEM E RENOMEAÇÃO DO BOTÃO CAST)
 // ==========================================
 class TelaDeEstudosSegura extends StatefulWidget {
   const TelaDeEstudosSegura({super.key});
@@ -762,48 +762,48 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
       ..setUserAgent("iphoneconserlar2026")
       ..setNavigationDelegate(
         NavigationDelegate(
+          onNavigationRequest: (NavigationRequest request) {
+            String url = request.url.toLowerCase();
+            
+            if (url.contains("youtube.com") || url.contains("vimeo.com") || url.contains(".mp4") || url.contains(".mov")) {
+              return NavigationDecision.navigate;
+            }
+            
+            if (request.isMainFrame == false) {
+              return NavigationDecision.navigate;
+            }
+            
+            return NavigationDecision.navigate;
+          },
           onPageFinished: (String url) {
-            // Script cirúrgico focado no mediaViewer e nas camadas de proteção
             const String scriptBlindagem = '''
               (function() {
-                // 1. Trata especificamente o iframe do player (#mediaViewer)
-                const iframe = document.getElementById('mediaViewer');
-                if (iframe) {
-                  iframe.removeAttribute('allowfullscreen');
-                  let src = iframe.getAttribute('src');
-                  if (src) {
-                    // Força parâmetros de inline para YouTube/Vimeo se for o caso
-                    if (src.includes('youtube.com/embed') && !src.includes('playsinline=1')) {
-                      iframe.src = src + (src.indexOf('?') === -1 ? '?' : '&') + 'playsinline=1&fs=0&controls=1';
-                    }
-                  }
-                }
-
-                // 2. Ajusta qualquer outro iframe que apareça na plataforma
+                // 1. Remove allowfullscreen de todos os iframes e vídeos
                 const iframes = document.querySelectorAll('iframe');
                 iframes.forEach(f => {
                   f.removeAttribute('allowfullscreen');
+                  f.setAttribute('webkitallowfullscreen', 'false');
+                  f.setAttribute('mozallowfullscreen', 'false');
                 });
 
-                // 3. Remove ou desativa a camada de proteção por cima do player se ela estiver bloqueando o toque correto
+                // 2. Desativa overlay se atrapalhar o toque
                 const overlay = document.querySelector('.pdf-protection-overlay');
                 if (overlay) {
-                  // Se o player estiver ativo, fazemos a camada ignorar os cliques para não bugar o player
                   overlay.style.pointerEvents = 'none';
                 }
 
-                // 4. Observador dinâmico caso o src do iframe mude via JS (ao trocar de aula)
-                const observer = new MutationObserver((mutations) => {
-                  const targetIframe = document.getElementById('mediaViewer');
-                  if (targetIframe && targetIframe.hasAttribute('allowfullscreen')) {
-                    targetIframe.removeAttribute('allowfullscreen');
-                  }
-                });
-                
                 const wrapper = document.getElementById('playerWrapper');
                 if (wrapper) {
-                  observer.observe(wrapper, { childList: true, subtree: true, attributes: true });
+                  wrapper.style.webkitOverflowScrolling = 'touch';
                 }
+
+                // 3. Altera o texto do botão "Transmitir para TV" para "Cast" dinamicamente
+                const botoes = document.querySelectorAll('button, a, span, div');
+                botoes.forEach(el => {
+                  if (el.children.length === 0 && el.textContent.trim().includes("Transmitir para TV")) {
+                    el.textContent = el.textContent.replace("Transmitir para TV", "Cast");
+                  }
+                });
               })();
             ''';
 
