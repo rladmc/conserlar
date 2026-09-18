@@ -738,7 +738,7 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
 }
 
 // ==========================================
-// TELA DA PLATAFORMA DO ALUNO (COM TELA PRETA, BLINDAGEM E RENOMEAÇÃO DO BOTÃO CAST)
+// TELA DA PLATAFORMA DO ALUNO (BLINDADA + BOTÕES INJETADOS)
 // ==========================================
 class TelaDeEstudosSegura extends StatefulWidget {
   const TelaDeEstudosSegura({super.key});
@@ -750,6 +750,7 @@ class TelaDeEstudosSegura extends StatefulWidget {
 class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsBindingObserver {
   late final WebViewController controller;
   bool _conteudoVisivel = true;
+  bool _isFullScreen = false;
 
   @override
   void initState() {
@@ -763,9 +764,32 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
       ..setNavigationDelegate(
         NavigationDelegate(
           onNavigationRequest: (NavigationRequest request) {
-            String url = request.url.toLowerCase();
+            String url = request.url;
+
+            // Intercepta o clique do botão "Full" injetado via JS no site
+            if (url.contains("app://full_clicked")) {
+              _toggleFullInterno();
+              return NavigationDecision.prevent;
+            }
+
+            // Intercepta o clique do botão "AirPlay" injetado via JS no site
+            if (url.contains("app://airplay_clicked")) {
+              // Próximo passo: Lógica nativa de AirPlay
+              debugPrint("AirPlay acionado pelo site");
+              return NavigationDecision.prevent;
+            }
+
+            // Intercepta o clique do botão "Cast" injetado via JS no site
+            if (url.contains("app://cast_clicked")) {
+              // Próximo passo: Lógica de Chromecast
+              debugPrint("Cast acionado pelo site");
+              return NavigationDecision.prevent;
+            }
+
+            String urlLower = url.toLowerCase();
             
-            if (url.contains("youtube.com") || url.contains("vimeo.com") || url.contains(".mp4") || url.contains(".mov")) {
+            // Permite mídias e embeds seguros dentro da WebView
+            if (urlLower.contains("mediadelivery.net") || urlLower.contains("youtube.com") || urlLower.contains("vimeo.com") || urlLower.contains(".mp4") || urlLower.contains(".mov")) {
               return NavigationDecision.navigate;
             }
             
@@ -778,15 +802,55 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
           onPageFinished: (String url) {
             const String scriptBlindagem = '''
               (function() {
-                // 1. Remove allowfullscreen de todos os iframes e vídeos
+                // 1. Trata iframes (Bunny.net / mediadelivery e outros)
                 const iframes = document.querySelectorAll('iframe');
                 iframes.forEach(f => {
                   f.removeAttribute('allowfullscreen');
                   f.setAttribute('webkitallowfullscreen', 'false');
                   f.setAttribute('mozallowfullscreen', 'false');
+                  
+                  let src = f.getAttribute('src');
+                  if (src && src.includes('mediadelivery.net')) {
+                    f.setAttribute('playsinline', 'true');
+                    f.setAttribute('webkit-playsinline', 'true');
+                  }
                 });
 
-                // 2. Desativa overlay se atrapalhar o toque
+                // 2. CSS para Fullscreen interno seguro do App e botões injetados
+                const style = document.createElement('style');
+                style.innerHTML = `
+                  button[aria-label*="Fullscreen"], button[aria-label*="Tela cheia"], .jw-icon-fullscreen {
+                    display: none !important;
+                  }
+                  .app-fullscreen-mode {
+                    position: fixed !important;
+                    top: 0 !important;
+                    left: 0 !important;
+                    width: 100vw !important;
+                    height: 100vh !important;
+                    z-index: 999999 !important;
+                    background: black !important;
+                  }
+                  .app-injected-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 5px;
+                    margin-left: 6px;
+                    padding: 6px 12px;
+                    background-color: #212529;
+                    color: #fff;
+                    border: 1px solid #198754;
+                    border-radius: 4px;
+                    font-size: 14px;
+                    cursor: pointer;
+                    vertical-align: middle;
+                  }
+                  .app-injected-btn:hover {
+                    background-color: #198754;
+                  }
+                `;
+                document.head.appendChild(style);
+
                 const overlay = document.querySelector('.pdf-protection-overlay');
                 if (overlay) {
                   overlay.style.pointerEvents = 'none';
@@ -797,11 +861,42 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
                   wrapper.style.webkitOverflowScrolling = 'touch';
                 }
 
-                // 3. Altera o texto do botão "Transmitir para TV" para "Cast" dinamicamente
+                // 3. Localiza o botão "Transmitir para TV", transforma em "Cast" e injeta "AirPlay" e "Full" ao lado
                 const botoes = document.querySelectorAll('button, a, span, div');
                 botoes.forEach(el => {
                   if (el.children.length === 0 && el.textContent.trim().includes("Transmitir para TV")) {
-                    el.textContent = el.textContent.replace("Transmitir para TV", "Cast");
+                    if (!el.dataset.injectedExtras) {
+                      el.dataset.injectedExtras = "true";
+                      el.textContent = "Cast";
+                      el.style.cursor = "pointer";
+                      el.onclick = function(e) {
+                        e.preventDefault();
+                        window.location.href = "app://cast_clicked";
+                      };
+                      
+                      // Cria botão AirPlay
+                      const btnAirPlay = document.createElement('button');
+                      btnAirPlay.className = "app-injected-btn";
+                      btnAirPlay.innerHTML = "AirPlay";
+                      btnAirPlay.onclick = function(e) {
+                        e.preventDefault();
+                        window.location.href = "app://airplay_clicked";
+                      };
+
+                      // Cria botão Full
+                      const btnFull = document.createElement('button');
+                      btnFull.className = "app-injected-btn";
+                      btnFull.id = "btnFullInjetado";
+                      btnFull.innerHTML = "Full";
+                      btnFull.onclick = function(e) {
+                        e.preventDefault();
+                        window.location.href = "app://full_clicked";
+                      };
+
+                      // Insere logo após o botão Cast
+                      el.parentNode.insertBefore(btnAirPlay, el.nextSibling);
+                      el.parentNode.insertBefore(btnFull, btnAirPlay.nextSibling);
+                    }
                   }
                 });
               })();
@@ -822,11 +917,38 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
     }
   }
 
+  // Alterna o modo de tela cheia interno de forma segura dentro do app
+  void _toggleFullInterno() {
+    setState(() {
+      _isFullScreen = !_isFullScreen;
+    });
+
+    if (_isFullScreen) {
+      controller.runJavaScript('''
+        const wrapper = document.getElementById('playerWrapper') || document.getElementById('mediaViewer');
+        if (wrapper) {
+          wrapper.classList.add('app-fullscreen-mode');
+        }
+        const btnFull = document.getElementById('btnFullInjetado');
+        if (btnFull) { btnFull.innerHTML = "Sair Full"; }
+      ''');
+    } else {
+      controller.runJavaScript('''
+        const wrapper = document.getElementById('playerWrapper') || document.getElementById('mediaViewer');
+        if (wrapper) {
+          wrapper.classList.remove('app-fullscreen-mode');
+        }
+        const btnFull = document.getElementById('btnFullInjetado');
+        if (btnFull) { btnFull.innerHTML = "Full"; }
+      ''');
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       setState(() {
-        _conteudoVisivel = false; // Tela preta imediata
+        _conteudoVisivel = false; // Tela preta gerada imediatamente no print/multitarefa
       });
     } else if (state == AppLifecycleState.resumed) {
       setState(() {
