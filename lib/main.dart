@@ -738,7 +738,7 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
 }
 
 // ==========================================
-// TELA DA PLATAFORMA DO ALUNO (COM TELA PRETA DE SEGURANÇA)
+// TELA DA PLATAFORMA DO ALUNO (COM TELA PRETA DE SEGURANÇA E BLINDAGEM DE VÍDEO)
 // ==========================================
 class TelaDeEstudosSegura extends StatefulWidget {
   const TelaDeEstudosSegura({super.key});
@@ -760,6 +760,60 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent("iphoneconserlar2026")
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (String url) {
+            // Script injetado via JS para forçar os vídeos a rodarem inline (sem separar da tela)
+            const String scriptBlindagem = '''
+              (function() {
+                // 1. Trata todas as tags <video> nativas
+                const videos = document.querySelectorAll('video');
+                videos.forEach(v => {
+                  v.setAttribute('playsinline', 'true');
+                  v.setAttribute('webkit-playsinline', 'true');
+                  if (v.requestFullscreen) {
+                    v.requestFullscreen = function() { return Promise.reject("Bloqueado"); };
+                  }
+                });
+
+                // 2. Trata iframes (YouTube, Vimeo, etc.)
+                const iframes = document.querySelectorAll('iframe');
+                iframes.forEach(iframe => {
+                  let src = iframe.getAttribute('src');
+                  if (src && src.includes('youtube.com/embed')) {
+                    if (!src.includes('playsinline=1')) {
+                      iframe.src = src + (src.indexOf('?') === -1 ? '?' : '&') + 'playsinline=1&fs=0';
+                    }
+                  }
+                  iframe.removeAttribute('allowfullscreen');
+                });
+
+                // 3. Monitora elementos carregados dinamicamente (Single Page Apps / AJAX)
+                const observer = new MutationObserver((mutations) => {
+                  mutations.forEach((mutation) => {
+                    mutation.addedNodes.forEach((node) => {
+                      if (node.nodeType === 1) {
+                        if (node.tagName === 'VIDEO') {
+                          node.setAttribute('playsinline', 'true');
+                          node.setAttribute('webkit-playsinline', 'true');
+                        }
+                        const subVideos = node.querySelectorAll('video');
+                        subVideos.forEach(v => {
+                          v.setAttribute('playsinline', 'true');
+                          v.setAttribute('webkit-playsinline', 'true');
+                        });
+                      }
+                    });
+                  });
+                });
+                observer.observe(document.body, { childList: true, subtree: true });
+              })();
+            ''';
+
+            controller.runJavaScript(scriptBlindagem);
+          },
+        ),
+      )
       ..loadRequest(Uri.parse('https://aluno.conserlar.com'));
   }
 
