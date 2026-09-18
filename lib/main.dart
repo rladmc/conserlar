@@ -1,8 +1,8 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:lottie/lottie.dart';
+import 'package:screen_protector/screen_protector.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -109,11 +109,11 @@ class MainMenuView extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF2C3E50).withOpacity(0.7),
+                            color: const Color(0xFF2C3E50).withValues(alpha: 0.7),
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.3),
+                                color: Colors.black.withValues(alpha: 0.3),
                                 blurRadius: 4,
                                 offset: const Offset(0, 2),
                               ),
@@ -180,7 +180,7 @@ class MainMenuView extends StatelessWidget {
         border: Border.all(color: Colors.white, width: 2.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.4),
+            color: Colors.black.withValues(alpha: 0.4),
             blurRadius: 6,
             offset: const Offset(0, 4),
           ),
@@ -371,7 +371,7 @@ class ConserTestScanView extends StatelessWidget {
         border: Border.all(color: Colors.white, width: 2.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.4),
+            color: Colors.black.withValues(alpha: 0.4),
             blurRadius: 6,
             offset: const Offset(0, 4),
           ),
@@ -753,10 +753,28 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
   @override
   void initState() {
     super.initState();
+    _protegerTela();
+
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent("iphoneconserlar2026")
       ..loadRequest(Uri.parse('https://aluno.conserlar.com'));
+  }
+
+  Future<void> _protegerTela() async {
+    try {
+      await ScreenProtector.preventScreenshotOn();
+    } catch (e) {
+      debugPrint("Erro ao ativar screen_protector: $e");
+    }
+  }
+
+  @override
+  void dispose() {
+    try {
+      ScreenProtector.preventScreenshotOff();
+    } catch (_) {}
+    super.dispose();
   }
 
   @override
