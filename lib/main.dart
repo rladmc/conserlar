@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:lottie/lottie.dart';
-import 'package:screen_protector/screen_protector.dart';
+// import 'package:screen_protector/screen_protector.dart'; //
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -738,7 +739,7 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
 }
 
 // ==========================================
-// TELA DA PLATAFORMA DO ALUNO (BLINDADA + BOTÕES INJETADOS)
+// TELA DA PLATAFORMA DO ALUNO (COM FULL FUNCIONAL)
 // ==========================================
 class TelaDeEstudosSegura extends StatefulWidget {
   const TelaDeEstudosSegura({super.key});
@@ -766,139 +767,160 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
           onNavigationRequest: (NavigationRequest request) {
             String url = request.url;
 
-            // Intercepta o clique do botão "Full" injetado via JS no site
+            // Intercepta cliques injetados
             if (url.contains("app://full_clicked")) {
               _toggleFullInterno();
               return NavigationDecision.prevent;
             }
 
-            // Intercepta o clique do botão "AirPlay" injetado via JS no site
             if (url.contains("app://airplay_clicked")) {
-              // Próximo passo: Lógica nativa de AirPlay
               debugPrint("AirPlay acionado pelo site");
               return NavigationDecision.prevent;
             }
 
-            // Intercepta o clique do botão "Cast" injetado via JS no site
             if (url.contains("app://cast_clicked")) {
-              // Próximo passo: Lógica de Chromecast
               debugPrint("Cast acionado pelo site");
               return NavigationDecision.prevent;
             }
 
             String urlLower = url.toLowerCase();
-            
-            // Permite mídias e embeds seguros dentro da WebView
+
             if (urlLower.contains("mediadelivery.net") || urlLower.contains("youtube.com") || urlLower.contains("vimeo.com") || urlLower.contains(".mp4") || urlLower.contains(".mov")) {
               return NavigationDecision.navigate;
             }
-            
+
             if (request.isMainFrame == false) {
               return NavigationDecision.navigate;
             }
-            
+
             return NavigationDecision.navigate;
           },
           onPageFinished: (String url) {
             const String scriptBlindagem = '''
               (function() {
-                // 1. Trata iframes (Bunny.net / mediadelivery e outros)
-                const iframes = document.querySelectorAll('iframe');
-                iframes.forEach(f => {
-                  f.removeAttribute('allowfullscreen');
-                  f.setAttribute('webkitallowfullscreen', 'false');
-                  f.setAttribute('mozallowfullscreen', 'false');
-                  
-                  let src = f.getAttribute('src');
-                  if (src && src.includes('mediadelivery.net')) {
-                    f.setAttribute('playsinline', 'true');
-                    f.setAttribute('webkit-playsinline', 'true');
-                  }
-                });
-
-                // 2. CSS para Fullscreen interno seguro do App e botões injetados
-                const style = document.createElement('style');
-                style.innerHTML = `
-                  button[aria-label*="Fullscreen"], button[aria-label*="Tela cheia"], .jw-icon-fullscreen {
-                    display: none !important;
-                  }
-                  .app-fullscreen-mode {
-                    position: fixed !important;
-                    top: 0 !important;
-                    left: 0 !important;
-                    width: 100vw !important;
-                    height: 100vh !important;
-                    z-index: 999999 !important;
-                    background: black !important;
-                  }
-                  .app-injected-btn {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 5px;
-                    margin-left: 6px;
-                    padding: 6px 12px;
-                    background-color: #212529;
-                    color: #fff;
-                    border: 1px solid #198754;
-                    border-radius: 4px;
-                    font-size: 14px;
-                    cursor: pointer;
-                    vertical-align: middle;
-                  }
-                  .app-injected-btn:hover {
-                    background-color: #198754;
-                  }
-                `;
-                document.head.appendChild(style);
-
-                const overlay = document.querySelector('.pdf-protection-overlay');
-                if (overlay) {
-                  overlay.style.pointerEvents = 'none';
-                }
-
-                const wrapper = document.getElementById('playerWrapper');
-                if (wrapper) {
-                  wrapper.style.webkitOverflowScrolling = 'touch';
-                }
-
-                // 3. Localiza o botão "Transmitir para TV", transforma em "Cast" e injeta "AirPlay" e "Full" ao lado
-                const botoes = document.querySelectorAll('button, a, span, div');
-                botoes.forEach(el => {
-                  if (el.children.length === 0 && el.textContent.trim().includes("Transmitir para TV")) {
-                    if (!el.dataset.injectedExtras) {
-                      el.dataset.injectedExtras = "true";
-                      el.textContent = "Cast";
-                      el.style.cursor = "pointer";
-                      el.onclick = function(e) {
-                        e.preventDefault();
-                        window.location.href = "app://cast_clicked";
-                      };
-                      
-                      // Cria botão AirPlay
-                      const btnAirPlay = document.createElement('button');
-                      btnAirPlay.className = "app-injected-btn";
-                      btnAirPlay.innerHTML = "AirPlay";
-                      btnAirPlay.onclick = function(e) {
-                        e.preventDefault();
-                        window.location.href = "app://airplay_clicked";
-                      };
-
-                      // Cria botão Full
-                      const btnFull = document.createElement('button');
-                      btnFull.className = "app-injected-btn";
-                      btnFull.id = "btnFullInjetado";
-                      btnFull.innerHTML = "Full";
-                      btnFull.onclick = function(e) {
-                        e.preventDefault();
-                        window.location.href = "app://full_clicked";
-                      };
-
-                      // Insere logo após o botão Cast
-                      el.parentNode.insertBefore(btnAirPlay, el.nextSibling);
-                      el.parentNode.insertBefore(btnFull, btnAirPlay.nextSibling);
+                // 1. Injeta os estilos CSS (Menu horizontal, botões customizados e fullscreen interno)
+                if (!document.getElementById('app-dynamic-styles')) {
+                  const style = document.createElement('style');
+                  style.id = 'app-dynamic-styles';
+                  style.innerHTML = `
+                    button[aria-label*="Fullscreen"], button[aria-label*="Tela cheia"], .jw-icon-fullscreen {
+                      display: none !important;
                     }
-                  }
-                });
+                    .app-fullscreen-mode {
+                      position: fixed !important;
+                      top: 0 !important;
+                      left: 0 !important;
+                      width: 100vw !important;
+                      height: 100vh !important;
+                      z-index: 999999 !important;
+                      background: #000 !important;
+                    }
+                    .app-injected-btn {
+                      display: inline-flex;
+                      align-items: center;
+                      gap: 5px;
+                      margin-left: 6px;
+                      padding: 6px 12px;
+                      background-color: #212529;
+                      color: #fff;
+                      border: 1px solid #198754;
+                      border-radius: 4px;
+                      font-size: 14px;
+                      cursor: pointer;
+                      vertical-align: middle;
+                      z-index: 99999;
+                    }
+                    .app-injected-btn:hover {
+                      background-color: #198754;
+                    }
+
+                    /* --- MENU DE NAVEGAÇÃO SUPERIOR EM SCROLL HORIZONTAL --- */
+                    #menuNavegacaoSuperior {
+                        display: flex !important;
+                        flex-wrap: nowrap !important;
+                        overflow-x: auto !important;
+                        overflow-y: hidden !important;
+                        justify-content: flex-start !important;
+                        white-space: nowrap !important;
+                        padding-bottom: 10px !important;
+                        -webkit-overflow-scrolling: touch;
+                        scrollbar-width: none; /* Esconde no Firefox */
+                    }
+                    
+                    /* Esconde a barra de rolagem no Chrome/Safari */
+                    #menuNavegacaoSuperior::-webkit-scrollbar {
+                        display: none; 
+                    }
+
+                    #menuNavegacaoSuperior .nav-item {
+                        flex: 0 0 auto !important;
+                        margin-right: 8px !important;
+                    }
+
+                    #menuNavegacaoSuperior .nav-link {
+                        background-color: #1E1E1E !important;
+                        border: 1px solid #333 !important;
+                        border-radius: 20px !important;
+                        padding: 8px 16px !important;
+                        font-size: 13px !important;
+                        transition: all 0.2s ease;
+                    }
+
+                    #menuNavegacaoSuperior .nav-link.active {
+                        background-color: #00E676 !important; /* Destaque verde padrão */
+                        color: #000 !important;
+                        border-color: #00E676 !important;
+                        font-weight: bold;
+                    }
+                  `;
+                  document.head.appendChild(style);
+                }
+
+                // 2. Renomeia e configura o botão de Cast (id="btnCast")
+                var checkBtnCastName = setInterval(function() {
+                    var btnCastSite = document.getElementById('btnCast');
+                    if (btnCastSite && !btnCastSite.dataset.configurado) {
+                        btnCastSite.dataset.configurado = "true";
+                        btnCastSite.innerText = "Cast";
+                        btnCastSite.style.cursor = "pointer";
+                        
+                        btnCastSite.onclick = function(e) {
+                            e.preventDefault();
+                            window.location.href = "app://cast_clicked";
+                        };
+
+                        // Cria e injeta o botão AirPlay logo após o btnCast
+                        if (!document.getElementById('btnAirPlayInjetado')) {
+                          var btnAirPlay = document.createElement('button');
+                          btnAirPlay.className = "app-injected-btn";
+                          btnAirPlay.id = "btnAirPlayInjetado";
+                          btnAirPlay.innerHTML = "AirPlay";
+                          btnAirPlay.onclick = function(e) {
+                            e.preventDefault();
+                            window.location.href = "app://airplay_clicked";
+                          };
+                          btnCastSite.parentNode.insertBefore(btnAirPlay, btnCastSite.nextSibling);
+                        }
+                    }
+                }, 500);
+                
+                // 3. Renomeia e configura o botão de Full (id="btnFull")
+                var checkBtnFullName = setInterval(function() {
+                    var btnFullSite = document.getElementById('btnFull');
+                    if (btnFullSite && !btnFullSite.dataset.configurado) {
+                        btnFullSite.dataset.configurado = "true";
+                        btnFullSite.innerText = "Full";
+                        btnFullSite.id = "btnFullInjetado";
+                        btnFullSite.style.cursor = "pointer";
+                        
+                        btnFullSite.onclick = function(e) {
+                            e.preventDefault();
+                            window.location.href = "app://full_clicked";
+                        };
+                        clearInterval(checkBtnFullName);
+                    }
+                }, 500);
+
               })();
             ''';
 
@@ -911,21 +933,27 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
 
   Future<void> _protegerTela() async {
     try {
-      await ScreenProtector.preventScreenshotOn();
+      // await ScreenProtector.preventScreenshotOn(); // Comentado temporariamente
     } catch (e) {
       debugPrint("Erro ao ativar screen_protector: $e");
     }
   }
 
-  // Alterna o modo de tela cheia interno de forma segura dentro do app
   void _toggleFullInterno() {
     setState(() {
       _isFullScreen = !_isFullScreen;
     });
 
     if (_isFullScreen) {
+      // Força paisagem e esconde as barras para experiência imersiva
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
       controller.runJavaScript('''
-        const wrapper = document.getElementById('playerWrapper') || document.getElementById('mediaViewer');
+        const wrapper = document.getElementById('playerWrapper');
         if (wrapper) {
           wrapper.classList.add('app-fullscreen-mode');
         }
@@ -933,8 +961,15 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
         if (btnFull) { btnFull.innerHTML = "Sair Full"; }
       ''');
     } else {
+      // Retorna ao modo retrato e restaura as barras do sistema
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
       controller.runJavaScript('''
-        const wrapper = document.getElementById('playerWrapper') || document.getElementById('mediaViewer');
+        const wrapper = document.getElementById('playerWrapper');
         if (wrapper) {
           wrapper.classList.remove('app-fullscreen-mode');
         }
@@ -948,7 +983,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       setState(() {
-        _conteudoVisivel = false; // Tela preta gerada imediatamente no print/multitarefa
+        _conteudoVisivel = false;
       });
     } else if (state == AppLifecycleState.resumed) {
       setState(() {
@@ -960,8 +995,16 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Restaura as orientações normais ao sair da tela
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     try {
-      ScreenProtector.preventScreenshotOff();
+      // ScreenProtector.preventScreenshotOff(); // Comentado temporariamente
     } catch (_) {}
     super.dispose();
   }
