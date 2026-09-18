@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:lottie/lottie.dart';
-import 'package:flutter/services.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -283,13 +282,13 @@ class ConserTestScanView extends StatelessWidget {
             Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 40, 20, 20),
+                  padding: const EdgeInsets.fromLTRB(20, 30, 20, 15),
                   child: Center(
                     child: Image.asset(
                       'assets/logo.png',
-                      height: 150,
+                      height: 130,
                       fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => const SizedBox(height: 150),
+                      errorBuilder: (context, error, stackTrace) => const SizedBox(height: 130),
                     ),
                   ),
                 ),
@@ -320,7 +319,7 @@ class ConserTestScanView extends StatelessWidget {
                         ),
                         _buildScanButton(
                           title: "PRIMEIRO ACESSO",
-                          subtitle: "CONSERTESTSCAN - EEPROM",
+                          subtitle: null,
                           lottieRes: null,
                           gradientColors: const [
                             Color(0xFF000000),
@@ -333,7 +332,7 @@ class ConserTestScanView extends StatelessWidget {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => const PrimeiroEepromWebViewView(),
+                                builder: (context) => const PrimeiroAcessoWebViewView(),
                               ),
                             );
                           },
@@ -352,7 +351,7 @@ class ConserTestScanView extends StatelessWidget {
 
   Widget _buildScanButton({
     required String title,
-    required String subtitle,
+    String? subtitle,
     String? lottieRes,
     required List<Color> gradientColors,
     required Color textColor,
@@ -360,8 +359,8 @@ class ConserTestScanView extends StatelessWidget {
     required VoidCallback onTap,
   }) {
     return Container(
-      height: 90,
-      margin: const EdgeInsets.only(bottom: 16),
+      height: 85,
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.centerRight,
@@ -411,18 +410,20 @@ class ConserTestScanView extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        subtitle,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Color(0xFFBDC3C7),
-                          fontSize: 11,
-                          shadows: [
-                            Shadow(color: Colors.black, blurRadius: 5, offset: Offset(3, 3)),
-                          ],
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Color(0xFFBDC3C7),
+                            fontSize: 11,
+                            shadows: [
+                              Shadow(color: Colors.black, blurRadius: 5, offset: Offset(3, 3)),
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -476,16 +477,16 @@ class _ConserTestWebViewState extends State<ConserTestWebView> {
 }
 
 // ==========================================
-// TELA DO WEBVIEW PRIMEIRO ACESSO EEPROM
+// TELA DO WEBVIEW PRIMEIRO ACESSO (GENÉRICA)
 // ==========================================
-class PrimeiroEepromWebViewView extends StatefulWidget {
-  const PrimeiroEepromWebViewView({super.key});
+class PrimeiroAcessoWebViewView extends StatefulWidget {
+  const PrimeiroAcessoWebViewView({super.key});
 
   @override
-  State<PrimeiroEepromWebViewView> createState() => _PrimeiroEepromWebViewViewState();
+  State<PrimeiroAcessoWebViewView> createState() => _PrimeiroAcessoWebViewViewState();
 }
 
-class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
+class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
   late final WebViewController controller;
   bool isLoading = true;
   bool hasError = false;
@@ -525,7 +526,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
             }
           },
           onWebResourceError: (WebResourceError error) {
-            debugPrint("Erro no WebView EEPROM: ${error.description}");
+            debugPrint("Erro no WebView Primeiro Acesso: ${error.description}");
             setState(() {
               isLoading = false;
               hasError = true;
@@ -542,24 +543,6 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
       hasError = false;
     });
     controller.reload();
-  }
-
-  Future<void> _copiarRedeEInstruir(BuildContext context) async {
-    // Copia o nome exato da rede para a área de transferência
-    await Clipboard.setData(const ClipboardData(text: 'ConsertestScan - EEPROM'));
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            '📋 Nome da rede copiado! Vá em Ajustes > Wi-Fi e selecione: ConsertestScan - EEPROM',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          backgroundColor: Color(0xFF238C00),
-          duration: Duration(seconds: 4),
-        ),
-      );
-    }
   }
 
   void _mostrarGuiaParaIphone(BuildContext context) {
@@ -588,7 +571,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                "Para configurar a EEPROM, conecte o seu celular na rede Wi-Fi da placa:",
+                "Para configurar o seu testador, conecte o celular na rede Wi-Fi correspondente:",
                 style: TextStyle(color: Color(0xFFBDC3C7), fontSize: 14),
               ),
               const SizedBox(height: 12),
@@ -605,7 +588,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        "ConsertestScan - EEPROM",
+                        "ConsertestScan - XXXX",
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
@@ -618,7 +601,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
               ),
               const SizedBox(height: 12),
               const Text(
-                "1️⃣ Toque no botão abaixo para **copiar o nome da rede**.\n2️⃣ Abra os **Ajustes > Wi-Fi** do seu celular e conecte-se.\n3️⃣ Volte para este aplicativo.",
+                "1️⃣ Abra os **Ajustes > Wi-Fi** do seu celular.\n2️⃣ Conecte na rede do seu testador.\n3️⃣ Retorne a esta página para salvar suas redes Wi-Fi.",
                 style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
               ),
             ],
@@ -635,12 +618,11 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
                   ),
                 ),
                 child: const Text(
-                  "COPIAR NOME DA REDE",
+                  "ENTENDIDO",
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                 ),
                 onPressed: () {
                   Navigator.of(context).pop();
-                  _copiarRedeEInstruir(context);
                 },
               ),
             ),
@@ -656,7 +638,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: const Color(0xFF37474F),
-        title: const Text("Configuração EEPROM", style: TextStyle(color: Colors.white, fontSize: 16)),
+        title: const Text("Primeiro Acesso - Configuração", style: TextStyle(color: Colors.white, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
@@ -698,7 +680,7 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
                       ),
                       const SizedBox(height: 12),
                       const Text(
-                        "Certifique-se de que o seu celular está conectado na rede:\n\n👉 ConsertestScan - EEPROM\n\nAssim que conectar, toque no botão abaixo.",
+                        "Certifique-se de que o seu celular está conectado na rede Wi-Fi correspondente ao seu testador:\n\n👉 ConsertestScan - XXXX\n\nAssim que conectar, retorne e toque no botão abaixo.",
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Color(0xFFBDC3C7),
@@ -731,12 +713,12 @@ class _PrimeiroEepromWebViewViewState extends State<PrimeiroEepromWebViewView> {
                       ),
                       const SizedBox(height: 15),
                       TextButton.icon(
-                        icon: const Icon(Icons.settings, color: Color(0xFFF1C40F), size: 18),
+                        icon: const Icon(Icons.help_outline, color: Color(0xFFF1C40F), size: 18),
                         label: const Text(
-                          "Copiar Nome da Rede Novamente",
+                          "Ver Instruções de Conexão",
                           style: TextStyle(color: Color(0xFFF1C40F), fontSize: 13),
                         ),
-                        onPressed: () => _copiarRedeEInstruir(context),
+                        onPressed: () => _mostrarGuiaParaIphone(context),
                       ),
                     ],
                   ),
