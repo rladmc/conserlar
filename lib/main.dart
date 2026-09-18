@@ -738,7 +738,7 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
 }
 
 // ==========================================
-// TELA DA PLATAFORMA DO ALUNO (COM TELA PRETA DE SEGURANÇA E BLINDAGEM DE VÍDEO)
+// TELA DA PLATAFORMA DO ALUNO (BLINDAGEM DE IFRAME E TELA PRETA)
 // ==========================================
 class TelaDeEstudosSegura extends StatefulWidget {
   const TelaDeEstudosSegura({super.key});
@@ -763,50 +763,47 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (String url) {
-            // Script injetado via JS para forçar os vídeos a rodarem inline (sem separar da tela)
+            // Script cirúrgico focado no mediaViewer e nas camadas de proteção
             const String scriptBlindagem = '''
               (function() {
-                // 1. Trata todas as tags <video> nativas
-                const videos = document.querySelectorAll('video');
-                videos.forEach(v => {
-                  v.setAttribute('playsinline', 'true');
-                  v.setAttribute('webkit-playsinline', 'true');
-                  if (v.requestFullscreen) {
-                    v.requestFullscreen = function() { return Promise.reject("Bloqueado"); };
-                  }
-                });
-
-                // 2. Trata iframes (YouTube, Vimeo, etc.)
-                const iframes = document.querySelectorAll('iframe');
-                iframes.forEach(iframe => {
+                // 1. Trata especificamente o iframe do player (#mediaViewer)
+                const iframe = document.getElementById('mediaViewer');
+                if (iframe) {
+                  iframe.removeAttribute('allowfullscreen');
                   let src = iframe.getAttribute('src');
-                  if (src && src.includes('youtube.com/embed')) {
-                    if (!src.includes('playsinline=1')) {
-                      iframe.src = src + (src.indexOf('?') === -1 ? '?' : '&') + 'playsinline=1&fs=0';
+                  if (src) {
+                    // Força parâmetros de inline para YouTube/Vimeo se for o caso
+                    if (src.includes('youtube.com/embed') && !src.includes('playsinline=1')) {
+                      iframe.src = src + (src.indexOf('?') === -1 ? '?' : '&') + 'playsinline=1&fs=0&controls=1';
                     }
                   }
-                  iframe.removeAttribute('allowfullscreen');
+                }
+
+                // 2. Ajusta qualquer outro iframe que apareça na plataforma
+                const iframes = document.querySelectorAll('iframe');
+                iframes.forEach(f => {
+                  f.removeAttribute('allowfullscreen');
                 });
 
-                // 3. Monitora elementos carregados dinamicamente (Single Page Apps / AJAX)
+                // 3. Remove ou desativa a camada de proteção por cima do player se ela estiver bloqueando o toque correto
+                const overlay = document.querySelector('.pdf-protection-overlay');
+                if (overlay) {
+                  // Se o player estiver ativo, fazemos a camada ignorar os cliques para não bugar o player
+                  overlay.style.pointerEvents = 'none';
+                }
+
+                // 4. Observador dinâmico caso o src do iframe mude via JS (ao trocar de aula)
                 const observer = new MutationObserver((mutations) => {
-                  mutations.forEach((mutation) => {
-                    mutation.addedNodes.forEach((node) => {
-                      if (node.nodeType === 1) {
-                        if (node.tagName === 'VIDEO') {
-                          node.setAttribute('playsinline', 'true');
-                          node.setAttribute('webkit-playsinline', 'true');
-                        }
-                        const subVideos = node.querySelectorAll('video');
-                        subVideos.forEach(v => {
-                          v.setAttribute('playsinline', 'true');
-                          v.setAttribute('webkit-playsinline', 'true');
-                        });
-                      }
-                    });
-                  });
+                  const targetIframe = document.getElementById('mediaViewer');
+                  if (targetIframe && targetIframe.hasAttribute('allowfullscreen')) {
+                    targetIframe.removeAttribute('allowfullscreen');
+                  }
                 });
-                observer.observe(document.body, { childList: true, subtree: true });
+                
+                const wrapper = document.getElementById('playerWrapper');
+                if (wrapper) {
+                  observer.observe(wrapper, { childList: true, subtree: true, attributes: true });
+                }
               })();
             ''';
 
@@ -827,14 +824,13 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Quando o iOS perde o foco (ex: puxou central de controle, abriu multitarefa ou apertou botões de print)
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       setState(() {
-        _conteudoVisivel = false; // Oculta o WebView na mesma hora, gerando tela preta
+        _conteudoVisivel = false; // Tela preta imediata
       });
     } else if (state == AppLifecycleState.resumed) {
       setState(() {
-        _conteudoVisivel = true; // Retorna ao normal quando o usuário volta para o app
+        _conteudoVisivel = true;
       });
     }
   }
@@ -855,7 +851,6 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
       body: SafeArea(
         child: Stack(
           children: [
-            // Se _conteudoVisivel for falso, o WebView some e fica apenas a tela preta pura
             if (_conteudoVisivel)
               WebViewWidget(controller: controller)
             else
