@@ -738,7 +738,7 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
 }
 
 // ==========================================
-// TELA DA PLATAFORMA DO ALUNO
+// TELA DA PLATAFORMA DO ALUNO (COM TELA PRETA DE SEGURANÇA)
 // ==========================================
 class TelaDeEstudosSegura extends StatefulWidget {
   const TelaDeEstudosSegura({super.key});
@@ -747,12 +747,14 @@ class TelaDeEstudosSegura extends StatefulWidget {
   State<TelaDeEstudosSegura> createState() => _TelaDeEstudosSeguraState();
 }
 
-class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
+class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsBindingObserver {
   late final WebViewController controller;
+  bool _conteudoVisivel = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _protegerTela();
 
     controller = WebViewController()
@@ -770,7 +772,22 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Quando o iOS perde o foco (ex: puxou central de controle, abriu multitarefa ou apertou botões de print)
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      setState(() {
+        _conteudoVisivel = false; // Oculta o WebView na mesma hora, gerando tela preta
+      });
+    } else if (state == AppLifecycleState.resumed) {
+      setState(() {
+        _conteudoVisivel = true; // Retorna ao normal quando o usuário volta para o app
+      });
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     try {
       ScreenProtector.preventScreenshotOff();
     } catch (_) {}
@@ -782,7 +799,27 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        child: WebViewWidget(controller: controller),
+        child: Stack(
+          children: [
+            // Se _conteudoVisivel for falso, o WebView some e fica apenas a tela preta pura
+            if (_conteudoVisivel)
+              WebViewWidget(controller: controller)
+            else
+              Container(
+                color: Colors.black,
+                child: const Center(
+                  child: Text(
+                    "CONTEÚDO PROTEGIDO",
+                    style: TextStyle(
+                      color: Color(0xFF7F8C8D),
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
