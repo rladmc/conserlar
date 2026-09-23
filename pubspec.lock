@@ -158,6 +158,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_ios_airplay:
+    dependency: "direct main"
+    description:
+      name: flutter_ios_airplay
+      sha256: "84c0429e6aff7bd5c024e660c19c232ad03016f06760bf2637f3f80fba8d7c08"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.8"
   flutter_launcher_icons:
     dependency: "direct dev"
     description:
@@ -179,14 +187,6 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  flutter_to_airplay:
-    dependency: "direct main"
-    description:
-      name: flutter_to_airplay
-      sha256: e71e7cbdf363c3f9686625f68b14e57497b507ef72d54016c14ccdffd3e4305d
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.0"
   flutter_web_plugins:
     dependency: transitive
     description: flutter

@@ -6,7 +6,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:lottie/lottie.dart';
 import 'package:dart_cast/dart_cast.dart';
-import 'package:flutter_to_airplay/flutter_to_airplay.dart';
+import 'package:flutter_ios_airplay/flutter_ios_airplay.dart';
 import 'package:dlna_dart/dlna.dart';
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf_io;
@@ -49,7 +49,6 @@ Future<void> _iniciarServidorProxyLocal() async {
       return shelf.Response.badRequest(body: 'URL não informada');
     }
 
-    // Instancia o cliente HTTP para esta requisição
     final client = http.Client();
     try {
       final targetUri = Uri.parse(targetUrlStr);
@@ -59,17 +58,21 @@ Future<void> _iniciarServidorProxyLocal() async {
       proxyReq.headers['Referer'] = 'https://aluno.conserlar.com';
       proxyReq.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
-      // Repassa o cabeçalho de Range (essencial para o Chromecast)
       if (request.headers.containsKey('range')) {
         proxyReq.headers['Range'] = request.headers['range']!;
       }
 
       final streamedResponse = await client.send(proxyReq);
 
+      // Detecta se é imagem para ajustar os headers de entrega na TV
+      final isImage = targetUrlStr.toLowerCase().contains('.jpg') ||
+          targetUrlStr.toLowerCase().contains('.jpeg') ||
+          targetUrlStr.toLowerCase().contains('.png');
+
       final headers = <String, String>{
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': '*',
-        'Accept-Ranges': 'bytes', // Crucial para o Chromecast gerenciar o buffer
+        'Accept-Ranges': 'bytes',
       };
 
       streamedResponse.headers.forEach((key, value) {
@@ -78,16 +81,18 @@ Future<void> _iniciarServidorProxyLocal() async {
         }
       });
 
-      // Retorna a stream de bytes e garante que o client fecha quando o stream terminar
+      // Se for imagem, forçamos o tipo correto para o client/TV reconhecer
+      if (isImage) {
+        headers['Content-Type'] = targetUrlStr.toLowerCase().contains('.png') ? 'image/png' : 'image/jpeg';
+      }
+
       return shelf.Response(
         streamedResponse.statusCode,
-        body: streamedResponse.stream.handleError((_, __) {
-          // Trata erros de interrupção de rede do Chromecast silenciosamente
-        }),
+        body: streamedResponse.stream.handleError((_, __) {}),
         headers: headers,
       );
     } catch (e) {
-      client.close(); // Fecha em caso de erro crítico
+      client.close();
       debugPrint("[ProxyLocal] Erro no streaming proxy: $e");
       return shelf.Response.internalServerError(body: e.toString());
     }
@@ -1397,14 +1402,13 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
     try {
       final session = await _castService.connect(device);
 
-      // Passa a URL pelo proxy local para contornar o bloqueio do Bunny CDN
       final urlProxyLocal = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
       debugPrint("[Cast] URL Proxy gerada: $urlProxyLocal");
 
       final media = CastMedia(
         url: urlProxyLocal,
-        title: _currentMediaTitle.isNotEmpty ? _currentMediaTitle : 'Conserlar',
-        type: CastMediaType.mp4, // Utiliza o tipo padrão compatível com o player do receiver
+        title: _currentMediaTitle.isNotEmpty ? _currentMediaTitle : 'Esquema Conserlar',
+        type: CastMediaType.mp4, // O Chromecast processa a stream tratada pelo proxy
       );
 
       await session.loadMedia(media);
@@ -1412,7 +1416,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Mídia enviada para a TV com sucesso!"),
+            content: Text("Esquema enviado para a TV com sucesso!"),
             backgroundColor: Color(0xFF198754),
           ),
         );
@@ -1518,8 +1522,19 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
     }
   }
 
-  void _acionarAirPlayNativo() {
-    debugPrint("Acionando AirPlay no iOS");
+  void _acionarAirPlayNativo() async {
+    if (_currentMediaUrl.isNotEmpty) {
+      try {
+        // Dispara a URL atual direto para o player nativo com AirPlay do iOS
+        await FlutterIosAirplay.url(url: _currentMediaUrl);
+      } catch (e) {
+        debugPrint("Erro no AirPlay: $e");
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Nenhuma mídia selecionada para o AirPlay.")),
+      );
+    }
   }
 
   void _pararTransmissaoNaTv() async {
