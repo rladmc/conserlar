@@ -41,7 +41,7 @@ dependencies:
   connectivity_plus: ^6.0.3
   #screen_protector: ^1.5.3
   #flutter_chrome_cast: ^1.1.0
-  flutter_chrome_cast: ^1.4.8
+  dart_cast: ^0.7.4
   dlna_dart: ^0.0.5       # Para DLNA / UPnP (Smart TVs)
   flutter_to_airplay: ^2.1.0
   shelf: ^1.4.1

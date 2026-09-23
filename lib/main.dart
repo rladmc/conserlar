@@ -5,11 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:lottie/lottie.dart';
-import 'package:flutter_chrome_cast/flutter_chrome_cast.dart'; // Importação do Chromecast
-import 'package:flutter_chrome_cast/cast_context.dart'; // Import necessário para o contexto do Cast
-import 'package:flutter_chrome_cast/discovery.dart';
-import 'package:flutter_chrome_cast/session.dart';
-import 'package:flutter_chrome_cast/media.dart';
+import 'package:dart_cast/dart_cast.dart';
 import 'package:flutter_to_airplay/flutter_to_airplay.dart';
 import 'package:dlna_dart/dlna.dart';
 import 'package:shelf/shelf.dart' as shelf;
@@ -20,27 +16,7 @@ import 'package:http/http.dart' as http;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  try {
-    // Substitua pelo seu App ID oficial do Google Cast (ou use o ID padrão de teste se aplicável)
-    const String castAppId = 'CC1AD845';
-
-    GoogleCastOptions? options;
-    if (Platform.isAndroid) {
-      options = GoogleCastOptionsAndroid(appId: castAppId);
-    } else if (Platform.isIOS) {
-      options = IOSGoogleCastOptions(
-        GoogleCastDiscoveryCriteriaInitialize.initWithApplicationID(castAppId),
-        stopCastingOnAppTerminated: false,
-      );
-    }
-
-    if (options != null) {
-      await GoogleCastContext.instance.setSharedInstanceWithOptions(options);
-      debugPrint("[Cast] Contexto inicializado com sucesso!");
-    }
-  } catch (e) {
-    debugPrint("[Cast Init Error]: $e");
-  }
+  // O dart_cast não exige inicialização prévia global de SDK nativo no main()
 
   runApp(const MyApp());
 }
@@ -904,30 +880,80 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
   }
 }
 
-// TELA DA PLATAFORMA DO ALUNO (COM FULL E TRANSMISSÃO MULTIPLATAFORMA)
+// ==========================================
+// TELA DA PLATAFORMA DO ALUNO (COM PROXY LOCAL E CAST)
 // ==========================================
 class TelaDeEstudosSegura extends StatefulWidget {
-  const TelaDeEstudosSegura({super.key});@override
-  State createState() => _TelaDeEstudosSeguraState();
-}class _TelaDeEstudosSeguraState extends State with WidgetsBindingObserver {
+  const TelaDeEstudosSegura({super.key});
+
+  @override
+  State<TelaDeEstudosSegura> createState() => _TelaDeEstudosSeguraState();
+}
+
+class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsBindingObserver {
   late final WebViewController controller;
   bool _conteudoVisivel = true;
-  bool _isFullScreen = false;// Dados da mídia atual extraídos do WebView
+  bool _isFullScreen = false;
+
+  // Dados da mídia atual extraídos do WebView
   String _currentMediaUrl = '';
   String _currentMediaTitle = '';
-  String _currentMediaType = 'video';// Variáveis de controle de busca DLNA automática
-  bool _estaBuscandoDlna = false;
-  List<Map<String, dynamic>> _tvsDlnaEncontradas = [];@override
+  String _currentMediaType = 'video';
+
+  // ==========================================
+  // CONFIGURAÇÃO DO SERVIDOR PROXY LOCAL (BUNNY CDN)
+  // ==========================================
+  HttpServer? _localProxyServer;
+  final int _localProxyPort = 8080;
+
+  // ==========================================
+  // SERVIÇO DE CAST UNIFICADO (dart_cast)
+  // ==========================================
+  late final CastService _castService = CastService(
+    discoveryProviders: [
+      ChromecastDiscoveryProvider(),
+      DlnaDiscoveryProvider(),
+    ],
+    sessionFactory: (device) {
+      switch (device.protocol) {
+        case CastProtocol.chromecast:
+          return ChromecastSession(device: device);
+        case CastProtocol.dlna:
+          final dlnaDescription = DlnaDeviceDescription(
+            friendlyName: device.name,
+            manufacturer: 'Generic DLNA',
+            modelName: 'Smart TV',
+            udn: device.id,
+            locationUrl: 'http://${device.address}:${device.port}/description.xml',
+          );
+          return DlnaSession(
+            device: device,
+            description: dlnaDescription,
+          );
+        case CastProtocol.airplay:
+          return AirPlaySession(device);
+        default:
+          throw UnsupportedError('Protocolo não suportado: ${device.protocol}');
+      }
+    },
+  );
+
+  @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _protegerTela();controller = WebViewController()
+    _protegerTela();
+
+    // Inicia o servidor proxy local assim que a tela sobe na rede Wi-Fi
+    _iniciarServidorProxyLocal();
+
+    controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent("iphoneconserlar2026")
 
-// ==========================================
-// PONTE DE COMUNICAÇÃO DE CAST / CONTROLE (JS -> FLUTTER)
-// ==========================================
+    // ==========================================
+    // PONTE DE COMUNICAÇÃO DE CAST / CONTROLE (JS -> FLUTTER)
+    // ==========================================
       ..addJavaScriptChannel(
         'AndroidCastBridge',
         onMessageReceived: (JavaScriptMessage message) {
@@ -940,7 +966,7 @@ class TelaDeEstudosSegura extends StatefulWidget {
             });
             final bool dispararMenu = data['abrirMenu'] ?? false;
 
-            debugPrint("Mídia capturada -> URL: $_currentMediaUrl | Tipo: $_currentMediaType");
+            debugPrint("Mídia capturada -> URL: $_currentMediaUrl \vert{} Tipo:$_currentMediaType");
 
             if (dispararMenu && _currentMediaUrl.isNotEmpty) {
               _mostrarMenuDispositivosTransmissao();
@@ -952,7 +978,6 @@ class TelaDeEstudosSegura extends StatefulWidget {
           }
         },
       )
-
       ..setNavigationDelegate(
         NavigationDelegate(
           onNavigationRequest: (NavigationRequest request) {
@@ -988,189 +1013,280 @@ class TelaDeEstudosSegura extends StatefulWidget {
 
             controller.runJavaScript(
               '''
-          (function() {
-            var style = document.createElement('style');
-            style.innerHTML = `
-                body {
-                    -webkit-tap-highlight-color: transparent;
-                    -webkit-touch-callout: none;
-                    overscroll-behavior-y: contain;
-                    background-color: #121212 !important;
-                    color: #E0E0E0 !important;
-                }
-                button[onclick*="alternarAba"] {
-                    display: none !important;
-                }
-                button, .btn {
-                    border-radius: 8px !important;
-                    cursor: pointer;
-                }
-                video, iframe {
-                    max-width: 100% !important;
-                    border-radius: 8px;
-                }
-                
-                .app-injected-btn {
-                  display: inline-flex;
-                  align-items: center;
-                  gap: 5px;
-                  margin-left: 6px;
-                  padding: 6px 12px;
-                  background-color: #212529;
-                  color: #fff;
-                  border: 1px solid #198754;
-                  border-radius: 4px;
-                  font-size: 14px;
-                  cursor: pointer;
-                  vertical-align: middle;
-                  z-index: 99999;
-                }
-                .app-injected-btn:hover {
-                  background-color: #198754;
-                }
-                
-                #containerTabelaErros .table {
-                    font-size: 11px !important;
-                }
-                #containerTabelaErros th, 
-                #containerTabelaErros td {
-                    padding: 4px 6px !important;
-                    word-break: break-word;
-                }
-
-                #menuNavegacaoSuperior {
-                    display: flex !important;
-                    flex-wrap: nowrap !important;
-                    overflow-x: auto !important;
-                    overflow-y: hidden !important;
-                    justify-content: flex-start !important;
-                    white-space: nowrap !important;
-                    padding-bottom: 10px !important;
-                    -webkit-overflow-scrolling: touch;
-                    scrollbar-width: none;
-                }
-                #menuNavegacaoSuperior::-webkit-scrollbar {
-                    display: none; 
-                }
-                #menuNavegacaoSuperior .nav-item {
-                    flex: 0 0 auto !important;
-                    margin-right: 8px !important;
-                }
-                #menuNavegacaoSuperior .nav-link {
-                    background-color: #1E1E1E !important;
-                    border: 1px solid #333 !important;
-                    border-radius: 20px !important;
-                    padding: 8px 16px !important;
-                    font-size: 13px !important;
-                    transition: all 0.2s ease;
-                }
-                #menuNavegacaoSuperior .nav-link.active {
-                    background-color: #00E676 !important;
-                    color: #000 !important;
-                    border-color: #00E676 !important;
-                    font-weight: bold;
-                }
-            `;
-            document.head.appendChild(style);      
-
-            var checkBtnCastName = setInterval(function() {
-                var btnCastSite = document.getElementById('btnCast');
-                if (btnCastSite && !btnCastSite.dataset.configurado) {
-                    btnCastSite.dataset.configurado = "true";
-                    btnCastSite.innerText = "Transmitir";
-                    btnCastSite.style.cursor = "pointer";
+              (function() {
+                var style = document.createElement('style');
+                style.innerHTML = `
+                    body {
+                        -webkit-tap-highlight-color: transparent;
+                        -webkit-touch-callout: none;
+                        overscroll-behavior-y: contain;
+                        background-color: #121212 !important;
+                        color: #E0E0E0 !important;
+                    }
+                    button[onclick*="alternarAba"] {
+                        display: none !important;
+                    }
+                    button, .btn {
+                        border-radius: 8px !important;
+                        cursor: pointer;
+                    }
+                    video, iframe {
+                        max-width: 100% !important;
+                        border-radius: 8px;
+                    }
                     
-                    btnCastSite.onclick = function(e) {
-                        e.preventDefault();
-                        var info = getMidiaInfo();
-                        info.abrirMenu = true;
-                        if (window.AndroidCastBridge) {
-                            window.AndroidCastBridge.postMessage(JSON.stringify(info));
-                        }
-                    };
-
-                    var isIos = $isIosDevice;
-                    if (isIos && !document.getElementById('btnAirPlayInjetado')) {
-                      var btnAirPlay = document.createElement('button');
-                      btnAirPlay.className = "app-injected-btn";
-                      btnAirPlay.id = "btnAirPlayInjetado";
-                      btnAirPlay.innerHTML = "AirPlay";
-                      btnAirPlay.onclick = function(e) {
-                        e.preventDefault();
-                        window.location.href = "app://airplay_clicked";
-                      };
-                      btnCastSite.parentNode.insertBefore(btnAirPlay, btnCastSite.nextSibling);
+                    .app-injected-btn {
+                      display: inline-flex;
+                      align-items: center;
+                      gap: 5px;
+                      margin-left: 6px;
+                      padding: 6px 12px;
+                      background-color: #212529;
+                      color: #fff;
+                      border: 1px solid #198754;
+                      border-radius: 4px;
+                      font-size: 14px;
+                      cursor: pointer;
+                      vertical-align: middle;
+                      z-index: 99999;
                     }
-                    clearInterval(checkBtnCastName);
-                }
-            }, 500);
-            
-            var checkBtnFullName = setInterval(function() {
-                var btnFullSite = document.getElementById('btnFull');
-                if (btnFullSite && !btnFullSite.dataset.configurado) {
-                    btnFullSite.dataset.configurado = "true";
-                    btnFullSite.innerText = "Full";
-                    btnFullSite.id = "btnFullInjetado";
-                    btnFullSite.style.cursor = "pointer";
+                    .app-injected-btn:hover {
+                      background-color: #198754;
+                    }
                     
-                    btnFullSite.onclick = function(e) {
+                    #containerTabelaErros .table {
+                        font-size: 11px !important;
+                    }
+                    #containerTabelaErros th, 
+                    #containerTabelaErros td {
+                        padding: 4px 6px !important;
+                        word-break: break-word;
+                    }
+
+                    #menuNavegacaoSuperior {
+                        display: flex !important;
+                        flex-wrap: nowrap !important;
+                        overflow-x: auto !important;
+                        overflow-y: hidden !important;
+                        justify-content: flex-start !important;
+                        white-space: nowrap !important;
+                        padding-bottom: 10px !important;
+                        -webkit-overflow-scrolling: touch;
+                        scrollbar-width: none;
+                    }
+                    #menuNavegacaoSuperior::-webkit-scrollbar {
+                        display: none; 
+                    }
+                    #menuNavegacaoSuperior .nav-item {
+                        flex: 0 0 auto !important;
+                        margin-right: 8px !important;
+                    }
+                    #menuNavegacaoSuperior .nav-link {
+                        background-color: #1E1E1E !important;
+                        border: 1px solid #333 !important;
+                        border-radius: 20px !important;
+                        padding: 8px 16px !important;
+                        font-size: 13px !important;
+                        transition: all 0.2s ease;
+                    }
+                    #menuNavegacaoSuperior .nav-link.active {
+                        background-color: #00E676 !important;
+                        color: #000 !important;
+                        border-color: #00E676 !important;
+                        font-weight: bold;
+                    }
+                `;
+                document.head.appendChild(style);      
+
+                var checkBtnCastName = setInterval(function() {
+                    var btnCastSite = document.getElementById('btnCast');
+                    if (btnCastSite && !btnCastSite.dataset.configurado) {
+                        btnCastSite.dataset.configurado = "true";
+                        btnCastSite.innerText = "Transmitir";
+                        btnCastSite.style.cursor = "pointer";
+                        
+                        btnCastSite.onclick = function(e) {
+                            e.preventDefault();
+                            var info = getMidiaInfo();
+                            info.abrirMenu = true;
+                            if (window.AndroidCastBridge) {
+                                window.AndroidCastBridge.postMessage(JSON.stringify(info));
+                            }
+                        };
+
+                        var isIos = $isIosDevice;
+                        if (isIos && !document.getElementById('btnAirPlayInjetado')) {
+                          var btnAirPlay = document.createElement('button');
+                          btnAirPlay.className = "app-injected-btn";
+                          btnAirPlay.id = "btnAirPlayInjetado";
+                          btnAirPlay.innerHTML = "AirPlay";
+                          btnAirPlay.onclick = function(e) {
+                            e.preventDefault();
+                            window.location.href = "app://airplay_clicked";
+                          };
+                          btnCastSite.parentNode.insertBefore(btnAirPlay, btnCastSite.nextSibling);
+                        }
+                        clearInterval(checkBtnCastName);
+                    }
+                }, 500);
+                
+                var checkBtnFullName = setInterval(function() {
+                    var btnFullSite = document.getElementById('btnFull');
+                    if (btnFullSite && !btnFullSite.dataset.configurado) {
+                        btnFullSite.dataset.configurado = "true";
+                        btnFullSite.innerText = "Full";
+                        btnFullSite.id = "btnFullInjetado";
+                        btnFullSite.style.cursor = "pointer";
+                        
+                        btnFullSite.onclick = function(e) {
+                            e.preventDefault();
+                            window.location.href = "app://full_clicked";
+                        };
+                        clearInterval(checkBtnFullName);
+                    }
+                }, 500);
+
+                document.addEventListener('contextmenu', function(e) {
+                    if (e.target.tagName === 'VIDEO' || e.target.tagName === 'IMG' || e.target.tagName === 'IFRAME') {
                         e.preventDefault();
-                        window.location.href = "app://full_clicked";
-                    };
-                    clearInterval(checkBtnFullName);
-                }
-            }, 500);
+                    }
+                });
 
-            document.addEventListener('contextmenu', function(e) {
-                if (e.target.tagName === 'VIDEO' || e.target.tagName === 'IMG' || e.target.tagName === 'IFRAME') {
-                    e.preventDefault();
-                }
-            });
+                function getMidiaInfo() {
+                    var mediaViewer = document.getElementById('mediaViewer');
+                    if (mediaViewer && mediaViewer.src && !mediaViewer.classList.contains('d-none') && mediaViewer.src !== window.location.href && mediaViewer.src !== "") {
+                        var srcUrl = mediaViewer.src;
+                        if (srcUrl.includes('mediadelivery.net')) {
+                            var partes = srcUrl.split('/');
+                            var videoId = partes[partes.length - 1].split('?')[0];
+                            if (videoId && videoId.length > 10) {
+                                var urlDiretaVideo = "https://vz-84a4a5f4-d42.b-cdn.net/" + videoId + "/play_360p.mp4";
+                                return { url: urlDiretaVideo, titulo: document.title || 'Aula Conserlar', tipo: 'video', abrirMenu: false };
+                            }
+                        }
+                        return { url: srcUrl, titulo: document.title || 'Aula Conserlar', tipo: 'video', abrirMenu: false };
+                    }
 
-            function getMidiaInfo() {
-                var mediaViewer = document.getElementById('mediaViewer');
-                if (mediaViewer && mediaViewer.src && !mediaViewer.classList.contains('d-none') && mediaViewer.src !== window.location.href && mediaViewer.src !== "") {
-                    var srcUrl = mediaViewer.src;
-                    if (srcUrl.includes('mediadelivery.net')) {
-                        var partes = srcUrl.split('/');
-                        var videoId = partes[partes.length - 1].split('?')[0];
-                        if (videoId && videoId.length > 10) {
-                            var urlDiretaVideo = "https://vz-84a4a5f4-d42.b-cdn.net/" + videoId + "/play_360p.mp4";
-                            return { url: urlDiretaVideo, titulo: document.title || 'Aula Conserlar', tipo: 'video', abrirMenu: false };
+                    var imgApostila = document.getElementById('imagemApostila');
+                    if (imgApostila) {
+                        var iUrl = imgApostila.src || imgApostila.getAttribute('data-src') || '';
+                        if (iUrl && !imgApostila.classList.contains('d-none')) {
+                            return { url: iUrl, titulo: document.title || 'Esquema Conserlar', tipo: 'image', abrirMenu: false };
                         }
                     }
-                    return { url: srcUrl, titulo: document.title || 'Aula Conserlar', tipo: 'video', abrirMenu: false };
+                    return { url: '', titulo: '', tipo: 'video', abrirMenu: false };
                 }
 
-                var imgApostila = document.getElementById('imagemApostila');
-                if (imgApostila) {
-                    var iUrl = imgApostila.src || imgApostila.getAttribute('data-src') || '';
-                    if (iUrl && !imgApostila.classList.contains('d-none')) {
-                        return { url: iUrl, titulo: document.title || 'Esquema Conserlar', tipo: 'image', abrirMenu: false };
+                setInterval(function() {
+                    var info = getMidiaInfo();
+                    if (info.url && window.AndroidCastBridge) {
+                        window.AndroidCastBridge.postMessage(JSON.stringify(info));
                     }
-                }
-                return { url: '', titulo: '', tipo: 'video', abrirMenu: false };
-            }
-
-            setInterval(function() {
-                var info = getMidiaInfo();
-                if (info.url && window.AndroidCastBridge) {
-                    window.AndroidCastBridge.postMessage(JSON.stringify(info));
-                }
-            }, 2000);
-          })();
-          ''',
+                }, 2000);
+              })();
+              ''',
             );
           },
         ),
       )
       ..loadRequest(Uri.parse('https://aluno.conserlar.com'));
-  }// ==========================================
-// MENU DE TRANSMISSÃO MULTIPLATAFORMA UNIFICADO
-// ==========================================
+  }
+
+  // ==========================================
+  // IMPLEMENTAÇÃO DO SERVIDOR PROXY LOCAL
+  // ==========================================
+  Future<void> _iniciarServidorProxyLocal() async {
+    if (_localProxyServer != null) return;
+
+    final router = shelf_router.Router();
+
+    router.get('/proxy', (shelf.Request request) async {
+      final targetUrlStr = request.requestedUri.queryParameters['url'];
+      if (targetUrlStr == null || targetUrlStr.isEmpty) {
+        return shelf.Response.badRequest(body: 'URL não informada');
+      }
+
+      final client = http.Client();
+      try {
+        final targetUri = Uri.parse(targetUrlStr);
+        final proxyReq = http.Request('GET', targetUri);
+
+        // Injeta os cabeçalhos exigidos pelo Bunny CDN
+        proxyReq.headers['Referer'] = 'https://aluno.conserlar.com';
+        proxyReq.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+
+        // Repassa o cabeçalho de Range (essencial para o Chromecast / streaming)
+        if (request.headers.containsKey('range')) {
+          proxyReq.headers['Range'] = request.headers['range']!;
+        }
+
+        final streamedResponse = await client.send(proxyReq);
+
+        final headers = <String, String>{
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': '*',
+          'Accept-Ranges': 'bytes',
+        };
+
+        streamedResponse.headers.forEach((key, value) {
+          if (key.toLowerCase() != 'transfer-encoding') {
+            headers[key] = value;
+          }
+        });
+
+        return shelf.Response(
+          streamedResponse.statusCode,
+          body: streamedResponse.stream.handleError((_, __) {}),
+          headers: headers,
+        );
+      } catch (e) {
+        client.close();
+        debugPrint("[ProxyLocal] Erro no streaming proxy: $e");
+        return shelf.Response.internalServerError(body: e.toString());
+      }
+    });
+
+    try {
+      _localProxyServer = await shelf_io.serve(router.call, '0.0.0.0', _localProxyPort);
+      debugPrint('[ProxyLocal] Servidor rodando na rede em http://0.0.0.0:$_localProxyPort');
+    } catch (e) {
+      debugPrint('[ProxyLocal] Erro ao iniciar servidor local: $e');
+    }
+  }
+
+  Future<String> _gerarUrlProxyLocalParaBunny(String urlOriginal) async {
+    await _iniciarServidorProxyLocal();
+
+    String localIp = '127.0.0.1';
+    try {
+      for (var interface in await NetworkInterface.list()) {
+        for (var addr in interface.addresses) {
+          if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
+            localIp = addr.address;
+            break;
+          }
+        }
+      }
+    } catch (_) {}
+
+    final encodedUrl = Uri.encodeComponent(urlOriginal);
+    return 'http://$localIp:$_localProxyPort/proxy?url=$encodedUrl';
+  }
+
+  // ==========================================
+  // MENU DE TRANSMISSÃO MULTIPLATAFORMA UNIFICADO (dart_cast)
+  // ==========================================
   void _mostrarMenuDispositivosTransmissao() {
+    if (_currentMediaUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Nenhuma mídia carregada para transmitir!"), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
+      isDismissible: true,
       backgroundColor: const Color(0xFF1E1E1E),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
@@ -1178,7 +1294,7 @@ class TelaDeEstudosSegura extends StatefulWidget {
       builder: (context) {
         return Container(
           padding: const EdgeInsets.all(20),
-          height: 320,
+          height: 380,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1186,7 +1302,7 @@ class TelaDeEstudosSegura extends StatefulWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    "Transmitir Mídia",
+                    "Transmitir Mídia na Rede",
                     style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   IconButton(
@@ -1196,44 +1312,65 @@ class TelaDeEstudosSegura extends StatefulWidget {
                 ],
               ),
               const Text(
-                "Selecione o protocolo compatível com sua TV:",
+                "Selecione um aparelho compatível abaixo:",
                 style: TextStyle(color: Colors.grey, fontSize: 12),
               ),
               const Divider(color: Colors.grey),
               Expanded(
-                child: ListView(
-                  children: [
-                    ListTile(
-                      leading: const Icon(Icons.cast, color: Color(0xFF00E676)),
-                      title: const Text("Google Cast / Chromecast", style: TextStyle(color: Colors.white)),
-                      subtitle: const Text("Chromecast, Android TV, TVs compatíveis", style: TextStyle(color: Colors.grey, fontSize: 10)),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _conectarChromecast();
+                child: StreamBuilder<List<CastDevice>>(
+                  stream: _castService.startDiscovery(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      return const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(color: Color(0xFF00E676)),
+                            SizedBox(height: 12),
+                            Text("Procurando Chromecasts e TVs...", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                          ],
+                        ),
+                      );
+                    }
+
+                    final devices = snapshot.data!;
+
+                    return ListView.builder(
+                      itemCount: devices.length,
+                      itemBuilder: (context, index) {
+                        final device = devices[index];
+                        return ListTile(
+                          leading: const Icon(Icons.cast, color: Color(0xFF00E676)),
+                          title: Text(device.name, style: const TextStyle(color: Colors.white)),
+                          subtitle: Text("Protocolo: ${device.protocol.name.toUpperCase()}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                          trailing: const Icon(Icons.cast_connected, color: Colors.white70),
+                          onTap: () async {
+                            Navigator.pop(context);
+                            await _enviarMidiaParaDispositivo(device);
+                          },
+                        );
                       },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.tv, color: Color(0xFF00E676)),
-                      title: const Text("DLNA (Smart TV Geral)", style: TextStyle(color: Colors.white)),
-                      subtitle: const Text("Samsung, LG, Roku e outras na mesma rede Wi-Fi", style: TextStyle(color: Colors.grey, fontSize: 10)),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _conectarDlna();
-                      },
-                    ),
-                    if (Platform.isIOS)
-                      ListTile(
-                        leading: const Icon(Icons.airplay, color: Color(0xFF00E676)),
-                        title: const Text("AirPlay (Apple TV / Compatíveis)", style: TextStyle(color: Colors.white)),
-                        subtitle: const Text("Espelhamento e transmissão nativa Apple", style: TextStyle(color: Colors.grey, fontSize: 10)),
-                        onTap: () {
-                          Navigator.pop(context);
-                          _acionarAirPlayNativo();
-                        },
-                      ),
-                  ],
+                    );
+                  },
                 ),
               ),
+              if (Platform.isIOS)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Color(0xFF198754)),
+                      minimumSize: const Size(double.infinity, 40),
+                    ),
+                    icon: const Icon(Icons.airplay, color: Color(0xFF00E676)),
+                    label: const Text("Usar AirPlay Nativo (Apple TV)"),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _acionarAirPlayNativo();
+                    },
+                  ),
+                ),
             ],
           ),
         );
@@ -1241,129 +1378,16 @@ class TelaDeEstudosSegura extends StatefulWidget {
     );
   }
 
-// ==========================================
-  // INTEGRAÇÃO CHROMECAST (flutter_chrome_cast)
   // ==========================================
-  void _conectarChromecast() async {
-    if (_currentMediaUrl.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Nenhuma mídia carregada para transmitir!"), backgroundColor: Colors.red),
-      );
-      return;
-    }
-
-    _mostrarModalSelecaoChromecast();
-
-    try {
-      debugPrint("Iniciando descoberta Google Cast para URL: $_currentMediaUrl");
-      GoogleCastDiscoveryManager.instance.startDiscovery();
-    } catch (e) {
-      debugPrint("Erro ao iniciar descoberta Chromecast: $e");
-    }
-  }
-
-  void _mostrarModalSelecaoChromecast() {
-    showModalBottomSheet(
-      context: context,
-      isDismissible: true,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter modalSetState) {
-            return Container(
-              padding: const EdgeInsets.all(20),
-              height: 360,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "Dispositivos Google Cast",
-                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.grey),
-                        onPressed: () {
-                          try {
-                            GoogleCastDiscoveryManager.instance.stopDiscovery();
-                          } catch (_) {}
-                          Navigator.pop(context);
-                        },
-                      ),
-                    ],
-                  ),
-                  const Text(
-                    "Selecione a TV ou Chromecast abaixo:",
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                  const Divider(color: Colors.grey),
-                  Expanded(
-                    child: StreamBuilder<List<GoogleCastDevice>>(
-                      stream: GoogleCastDiscoveryManager.instance.devicesStream,
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                          return const Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                CircularProgressIndicator(color: Color(0xFF00E676)),
-                                SizedBox(height: 12),
-                                Text("Procurando aparelhos na rede...", style: TextStyle(color: Colors.grey, fontSize: 13))
-                              ],
-                            ),
-                          );
-                        }
-
-                        final devices = snapshot.data!;
-
-                        return ListView.builder(
-                          itemCount: devices.length,
-                          itemBuilder: (context, index) {
-                            final device = devices[index];
-                            return ListTile(
-                              leading: const Icon(Icons.cast, color: Color(0xFF00E676)),
-                              title: Text(device.friendlyName, style: const TextStyle(color: Colors.white)),
-                              subtitle: Text("Modelo: ${device.modelName ?? 'Chromecast'}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
-                              trailing: const Icon(Icons.cast_connected, color: Colors.white70),
-                              onTap: () async {
-                                try {
-                                  GoogleCastDiscoveryManager.instance.stopDiscovery();
-                                } catch (_) {}
-                                Navigator.pop(context);
-
-                                // Dispara a conexão com o device escolhido
-                                await _enviarMidiaParaChromecast(device);
-                              },
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-// ==========================================
-  // FUNÇÃO UNIFICADA DE ENVIO PARA TESTES
+  // FUNÇÃO DE ENVIO COM PROXY LOCAL APLICADO
   // ==========================================
-  Future<void> _enviarMidiaParaChromecast(GoogleCastDevice device) async {
-    debugPrint("[Cast] Conectando ao device: ${device.friendlyName} [ID: ${device.deviceID}]");
+  Future<void> _enviarMidiaParaDispositivo(CastDevice device) async {
+    debugPrint("[Cast] Conectando ao device: ${device.name} [IP:${device.address}]");
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Conectando a ${device.friendlyName}..."),
+          content: Text("Conectando a ${device.name}..."),
           backgroundColor: const Color(0xFF198754),
           duration: const Duration(seconds: 2),
         ),
@@ -1371,55 +1395,24 @@ class TelaDeEstudosSegura extends StatefulWidget {
     }
 
     try {
-      // 1. Limpa qualquer sessão órfã anterior
-      try {
-        await GoogleCastSessionManager.instance.endSessionAndStopCasting();
-      } catch (_) {}
+      final session = await _castService.connect(device);
 
-      // 2. Inicia a sessão com o dispositivo escolhido
-      await GoogleCastSessionManager.instance.startSessionWithDevice(device);
-
-      // 3. Loop de verificação de conexão para evitar timeouts prematuros
-      bool conectado = false;
-      for (int i = 0; i < 8; i++) {
-        await Future.delayed(const Duration(seconds: 1));
-        if (GoogleCastSessionManager.instance.connectionState == GoogleCastConnectState.connected) {
-          conectado = true;
-          break;
-        }
-      }
-
-      if (!conectado && GoogleCastSessionManager.instance.connectionState != GoogleCastConnectState.connected) {
-        throw "A TV demorou para responder ao pareamento.";
-      }
-
-      debugPrint("[Cast] Sessão estabelecida! Gerando proxy local para a Bunny.net...");
-
-      // 4. Gera a URL no proxy local do app e monta o payload de mídia
+      // Passa a URL pelo proxy local para contornar o bloqueio do Bunny CDN
       final urlProxyLocal = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
-      final isVideo = _currentMediaType == 'video';
+      debugPrint("[Cast] URL Proxy gerada: $urlProxyLocal");
 
-      final mediaInfo = GoogleCastMediaInformation(
-        contentId: urlProxyLocal,
-        contentUrl: Uri.parse(urlProxyLocal),
-        streamType: CastMediaStreamType.buffered,
-        contentType: isVideo ? 'video/mp4' : 'image/jpeg',
-        metadata: GoogleCastGenericMediaMetadata(
-          title: _currentMediaTitle.isNotEmpty ? _currentMediaTitle : 'Conserlar',
-          subtitle: 'Plataforma Conserlar',
-        ),
+      final media = CastMedia(
+        url: urlProxyLocal,
+        title: _currentMediaTitle.isNotEmpty ? _currentMediaTitle : 'Conserlar',
+        type: CastMediaType.mp4, // Utiliza o tipo padrão compatível com o player do receiver
       );
 
-      // 5. Envia o comando de reprodução para a TV
-      await GoogleCastRemoteMediaClient.instance.loadMedia(
-        mediaInfo,
-        autoPlay: true,
-      );
+      await session.loadMedia(media);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Transmitindo mídia com sucesso!"),
+            content: Text("Mídia enviada para a TV com sucesso!"),
             backgroundColor: Color(0xFF198754),
           ),
         );
@@ -1437,221 +1430,13 @@ class TelaDeEstudosSegura extends StatefulWidget {
       }
     }
   }
-// ==========================================
-// ROTINA DLNA AUTOMÁTICA (dlna_dart)
-// ==========================================
-  void _conectarDlna() async {
-    if (_currentMediaUrl.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Nenhuma mídia carregada para transmitir!"), backgroundColor: Colors.red),
-      );
-      return;
-    }
 
-    setState(() {
-      _estaBuscandoDlna = true;
-      _tvsDlnaEncontradas.clear();
-    });
-
-    _mostrarModalSelecaoDlna();
-
-    try {
-      debugPrint("[DLNA] Iniciando varredura UDP Multicast...");
-      final searcher = DLNAManager();
-      final manager = await searcher.start();
-
-      // Aguarda um instante para o socket UDP abrir na porta de broadcast
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      manager.devices.stream.listen((deviceMap) {
-        if (!mounted) return;
-
-        List<Map<String, dynamic>> listaTemporaria = [];
-
-        deviceMap.forEach((key, value) {
-          try {
-            final friendlyName = value.info.friendlyName ?? "Smart TV DLNA";
-            final host = key;
-
-            listaTemporaria.add({
-              'id': key,
-              'nome': friendlyName,
-              'host': host,
-              'deviceObj': value,
-            });
-          } catch (innerErr) {
-            debugPrint("[DLNA] Erro ao parsear device: $innerErr");
-          }
-        });
-
-        setState(() {
-          _tvsDlnaEncontradas = listaTemporaria;
-        });
-      });
-
-      // Mantém a varredura ativa por 8 segundos para dar tempo das TVs responderem ao M-SEARCH
-      await Future.delayed(const Duration(seconds: 8));
-      searcher.stop();
-
-    } catch (e) {
-      debugPrint("[DLNA] Erro crítico na varredura: $e");
-    } finally {
-      if (mounted) {
-        setState(() {
-          _estaBuscandoDlna = false;
-        });
-      }
-    }
-  }
-  void _mostrarModalSelecaoDlna() {
-    showModalBottomSheet(
-      context: context,
-      isDismissible: true,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter modalSetState) {
-            return Container(
-              padding: const EdgeInsets.all(20),
-              height: 360,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "Televisores DLNA na Residência",
-                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.grey),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                  const Text(
-                    "Selecione a TV do cliente para transmitir o conteúdo:",
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                  const Divider(color: Colors.grey),
-                  Expanded(
-                    child: _estaBuscandoDlna && _tvsDlnaEncontradas.isEmpty
-                        ? const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircularProgressIndicator(color: Color(0xFF00E676)),
-                          SizedBox(height: 12),
-                          Text("Escaneando a rede da casa...", style: TextStyle(color: Colors.grey, fontSize: 13))
-                        ],
-                      ),
-                    )
-                        : _tvsDlnaEncontradas.isEmpty
-                        ? const Center(
-                      child: Text(
-                        "Nenhuma TV encontrada.\nVerifique se o celular e a TV estão no mesmo Wi-Fi.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey, fontSize: 13),
-                      ),
-                    )
-                        : ListView.builder(
-                      itemCount: _tvsDlnaEncontradas.length,
-                      itemBuilder: (context, index) {
-                        final tv = _tvsDlnaEncontradas[index];
-                        return ListTile(
-                          leading: const Icon(Icons.tv, color: Color(0xFF00E676)),
-                          title: Text(tv['nome'], style: const TextStyle(color: Colors.white)),
-                          subtitle: Text("IP: ${tv['host']}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
-                          trailing: const Icon(Icons.cast_connected, color: Colors.white70),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _enviarMidiaParaTvDlna(tv);
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-  void _enviarMidiaParaTvDlna(Map<String, dynamic> tvInfo) async {
-    debugPrint("[DLNA] Preparando envio para: ${tvInfo['nome']}");
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Conectando à ${tvInfo['nome']}..."),
-        backgroundColor: const Color(0xFF198754),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-
-    try {
-      // 1. Gera a URL do proxy local para injetar os headers da Bunny.net
-      final urlProxyLocal = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
-      debugPrint("[DLNA] URL Local pronta para DLNA: $urlProxyLocal");
-
-      final deviceObj = tvInfo['deviceObj'];
-      final isVideo = _currentMediaType == 'video';
-
-      // 2. Configura a URI do AVTransport no DLNA
-      // O dlna_dart utiliza esses parâmetros exatos para o protocolo UPnP
-      await deviceObj.setAVTransportURI(
-        urlProxyLocal,
-        title: _currentMediaTitle.isNotEmpty ? _currentMediaTitle : 'Conserlar Mídia',
-      );
-
-      // 3. Dispara o comando de play
-      await deviceObj.play();
-
-      debugPrint("[DLNA] Comando de reprodução despachado com sucesso via DLNA!");
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Transmitindo via DLNA para a TV!"),
-            backgroundColor: Color(0xFF198754),
-          ),
-        );
-      }
-    } catch (e, stackTrace) {
-      debugPrint("[DLNA] Erro ao enviar comando de reprodução: $e");
-      debugPrint("$stackTrace");
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Falha ao iniciar reprodução DLNA na TV selecionada."),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-  void _acionarAirPlayNativo() {
-    debugPrint("Iniciando AirPlay nativo...");
-  }void _pararTransmissaoNaTv() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Transmissão encerrada."), backgroundColor: Colors.red),
-    );
-  }Future _protegerTela() async {
-    try {
-// await ScreenProtector.preventScreenshotOn();
-    } catch (e) {
-      debugPrint("Error: $e");
-    }
-  }void _toggleFullInterno() {
+  void _toggleFullInterno() {
     setState(() {
       _isFullScreen = !_isFullScreen;
-    });if (_isFullScreen) {
+    });
+
+    if (_isFullScreen) {
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
@@ -1659,42 +1444,42 @@ class TelaDeEstudosSegura extends StatefulWidget {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
       controller.runJavaScript('''
-    (function() {
-      const wrapper = document.getElementById('playerWrapper');
-      if (wrapper) {
-        wrapper.classList.add('player-fullscreen-fix');
-        wrapper.style.setProperty('position', 'fixed', 'important');
-        wrapper.style.setProperty('top', '0', 'important');
-        wrapper.style.setProperty('left', '0', 'important');
-        wrapper.style.setProperty('width', '100vw', 'important');
-        wrapper.style.setProperty('height', '100vh', 'important');
-        wrapper.style.setProperty('z-index', '999999', 'important');
-      }
+        (function() {
+          const wrapper = document.getElementById('playerWrapper');
+          if (wrapper) {
+            wrapper.classList.add('player-fullscreen-fix');
+            wrapper.style.setProperty('position', 'fixed', 'important');
+            wrapper.style.setProperty('top', '0', 'important');
+            wrapper.style.setProperty('left', '0', 'important');
+            wrapper.style.setProperty('width', '100vw', 'important');
+            wrapper.style.setProperty('height', '100vh', 'important');
+            wrapper.style.setProperty('z-index', '999999', 'important');
+          }
 
-      const mediaViewer = document.getElementById('mediaViewer');
-      if (mediaViewer) {
-        mediaViewer.style.setProperty('width', '100%', 'important');
-        mediaViewer.style.setProperty('height', '100%', 'important');
-      }
+          const mediaViewer = document.getElementById('mediaViewer');
+          if (mediaViewer) {
+            mediaViewer.style.setProperty('width', '100%', 'important');
+            mediaViewer.style.setProperty('height', '100%', 'important');
+          }
 
-      const btnExit = document.getElementById('btnExitFullscreen');
-      if (btnExit) {
-        btnExit.classList.remove('d-none');
-        btnExit.style.setProperty('z-index', '10000000', 'important');
-        btnExit.style.setProperty('position', 'fixed', 'important');
-        btnExit.style.setProperty('top', '15px', 'important');
-        btnExit.style.setProperty('right', '15px', 'important');
-        
-        btnExit.onclick = function(e) {
-          e.preventDefault();
-          window.location.href = "app://full_clicked";
-        };
-      }
+          const btnExit = document.getElementById('btnExitFullscreen');
+          if (btnExit) {
+            btnExit.classList.remove('d-none');
+            btnExit.style.setProperty('z-index', '10000000', 'important');
+            btnExit.style.setProperty('position', 'fixed', 'important');
+            btnExit.style.setProperty('top', '15px', 'important');
+            btnExit.style.setProperty('right', '15px', 'important');
+            
+            btnExit.onclick = function(e) {
+              e.preventDefault();
+              window.location.href = "app://full_clicked";
+            };
+          }
 
-      const btnFull = document.getElementById('btnFullInjetado');
-      if (btnFull) { btnFull.innerHTML = "Sair Full"; }
-    })();
-  ''');
+          const btnFull = document.getElementById('btnFullInjetado');
+          if (btnFull) { btnFull.innerHTML = "Sair Full"; }
+        })();
+      ''');
     } else {
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
@@ -1703,35 +1488,61 @@ class TelaDeEstudosSegura extends StatefulWidget {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
       controller.runJavaScript('''
-    (function() {
-      const wrapper = document.getElementById('playerWrapper');
-      if (wrapper) {
-        wrapper.classList.remove('player-fullscreen-fix');
-        wrapper.style.removeProperty('position');
-        wrapper.style.removeProperty('top');
-        wrapper.style.removeProperty('left');
-        wrapper.style.removeProperty('width');
-        wrapper.style.removeProperty('height');
-        wrapper.style.removeProperty('z-index');
-      }
+        (function() {
+          const wrapper = document.getElementById('playerWrapper');
+          if (wrapper) {
+            wrapper.classList.remove('player-fullscreen-fix');
+            wrapper.style.removeProperty('position');
+            wrapper.style.removeProperty('top');
+            wrapper.style.removeProperty('left');
+            wrapper.style.removeProperty('width');
+            wrapper.style.removeProperty('height');
+            wrapper.style.removeProperty('z-index');
+          }
 
-      const mediaViewer = document.getElementById('mediaViewer');
-      if (mediaViewer) {
-        mediaViewer.style.removeProperty('width');
-        mediaViewer.style.removeProperty('height');
-      }
+          const mediaViewer = document.getElementById('mediaViewer');
+          if (mediaViewer) {
+            mediaViewer.style.removeProperty('width');
+            mediaViewer.style.removeProperty('height');
+          }
 
-      const btnExit = document.getElementById('btnExitFullscreen');
-      if (btnExit) {
-        btnExit.classList.add('d-none');
-      }
+          const btnExit = document.getElementById('btnExitFullscreen');
+          if (btnExit) {
+            btnExit.classList.add('d-none');
+          }
 
-      const btnFull = document.getElementById('btnFullInjetado');
-      if (btnFull) { btnFull.innerHTML = "Full"; }
-    })();
-  ''');
+          const btnFull = document.getElementById('btnFullInjetado');
+          if (btnFull) { btnFull.innerHTML = "Full"; }
+        })();
+      ''');
     }
-  }@override
+  }
+
+  void _acionarAirPlayNativo() {
+    debugPrint("Acionando AirPlay no iOS");
+  }
+
+  void _pararTransmissaoNaTv() async {
+    try {
+      await _castService.activeSession?.disconnect();
+    } catch (_) {}
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Transmissão encerrada."), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  void _protegerTela() async {
+    try {
+      // await ScreenProtector.preventScreenshotOn();
+    } catch (e) {
+      debugPrint("Error: $e");
+    }
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       setState(() {
@@ -1742,9 +1553,12 @@ class TelaDeEstudosSegura extends StatefulWidget {
         _conteudoVisivel = true;
       });
     }
-  }@override
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _localProxyServer?.close(force: true); // Encerra o servidor proxy ao fechar a tela
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
@@ -1753,7 +1567,9 @@ class TelaDeEstudosSegura extends StatefulWidget {
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
-  }@override
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
