@@ -1634,7 +1634,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
 }
 
 // ==========================================
-// WIDGET AUXILIAR DE BUSCA BONSOIR (CORRIGIDO E SEGURO)
+// WIDGET UNIFICADO DE BUSCA (CHROMECAST + DLNA)
 // ==========================================
 class _BonsoirDeviceListWidget extends StatefulWidget {
   final Function(CastDevice) onDeviceSelected;
@@ -1645,49 +1645,59 @@ class _BonsoirDeviceListWidget extends StatefulWidget {
 }
 
 class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
-  BonsoirDiscovery? _discovery;
+  BonsoirDiscovery? _chromecastDiscovery;
+  BonsoirDiscovery? _dlnaDiscovery;
+
   final List<CastDevice> _foundDevices = [];
   bool _isSearching = true;
 
   @override
   void initState() {
     super.initState();
-    _startDiscovery();
+    _startAllDiscoveries();
   }
 
-  void _startDiscovery() async {
-    _discovery = BonsoirDiscovery(type: '_googlecast._tcp');
-    await _discovery!.initialize();
+  void _startAllDiscoveries() async {
+    // 1. Inicia busca por Chromecast
+    _chromecastDiscovery = BonsoirDiscovery(type: '_googlecast._tcp');
+    await _chromecastDiscovery!.initialize();
+    _listenToDiscovery(_chromecastDiscovery!, CastProtocol.chromecast);
+    await _chromecastDiscovery!.start();
 
-    _discovery!.eventStream!.listen((event) {
+    // 2. Inicia busca por DLNA
+    _dlnaDiscovery = BonsoirDiscovery(type: '_dlna._tcp');
+    await _dlnaDiscovery!.initialize();
+    _listenToDiscovery(_dlnaDiscovery!, CastProtocol.dlna);
+    await _dlnaDiscovery!.start();
+  }
+
+  void _listenToDiscovery(BonsoirDiscovery discovery, CastProtocol protocol) {
+    discovery.eventStream!.listen((event) {
       if (event is BonsoirDiscoveryServiceFoundEvent) {
-        event.service?.resolve(_discovery!.serviceResolver);
+        event.service?.resolve(discovery.serviceResolver);
       } else if (event is BonsoirDiscoveryServiceResolvedEvent) {
         final resolvedService = event.service;
         if (resolvedService != null) {
-          // O Bonsoir armazena os IPs em uma lista (hostAddresses)
           final List<String>? addresses = resolvedService.hostAddresses;
 
           if (addresses != null && addresses.isNotEmpty) {
-            // Pega o primeiro IP válido da lista
             final String serviceIp = addresses.first;
 
-            // Limpa um pouco o nome feio se ele vier muito poluído
+            // Limpa o nome do dispositivo
             String deviceName = resolvedService.name;
-            if (deviceName.contains('-')) {
-              // Exemplo: se vier "Quarto-Chromecast.local", limpa um pouco
-              deviceName = deviceName.replaceAll('.local', '');
+            if (deviceName.contains('.')) {
+              deviceName = deviceName.split('.').first;
             }
 
             final device = CastDevice(
               id: resolvedService.name,
               name: deviceName,
-              address: InternetAddress(serviceIp), // Passa o IP correto resolvido
+              address: InternetAddress(serviceIp),
               port: resolvedService.port,
-              protocol: CastProtocol.chromecast,
+              protocol: protocol,
             );
 
-            // Evita duplicatas na lista
+            // Evita duplicatas na lista com base no IP
             if (!_foundDevices.any((d) => d.address.address == device.address.address)) {
               if (mounted) {
                 setState(() {
@@ -1700,13 +1710,12 @@ class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
         }
       }
     });
-
-    await _discovery!.start();
   }
 
   @override
   void dispose() {
-    _discovery?.stop();
+    _chromecastDiscovery?.stop();
+    _dlnaDiscovery?.stop();
     super.dispose();
   }
 
@@ -1720,7 +1729,7 @@ class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
             const CircularProgressIndicator(color: Color(0xFF00E676)),
             const SizedBox(height: 12),
             Text(
-              _isSearching ? "Procurando dispositivos na rede..." : "Nenhum aparelho encontrado",
+              _isSearching ? "Procurando Chromecasts e TVs DLNA..." : "Nenhum aparelho encontrado",
               style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
           ],
@@ -1732,10 +1741,18 @@ class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
       itemCount: _foundDevices.length,
       itemBuilder: (context, index) {
         final device = _foundDevices[index];
+        final bool isDlna = device.protocol == CastProtocol.dlna;
+
         return ListTile(
-          leading: const Icon(Icons.cast, color: Color(0xFF00E676)),
+          leading: Icon(
+            isDlna ? Icons.tv : Icons.cast,
+            color: const Color(0xFF00E676),
+          ),
           title: Text(device.name, style: const TextStyle(color: Colors.white)),
-          subtitle: Text("IP: ${device.address.address} • Porta: ${device.port}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
+          subtitle: Text(
+            "${isDlna ? 'DLNA' : 'Chromecast'} • IP: ${device.address.address}:${device.port}",
+            style: const TextStyle(color: Colors.grey, fontSize: 11),
+          ),
           trailing: const Icon(Icons.cast_connected, color: Colors.white70),
           onTap: () => widget.onDeviceSelected(device),
         );
