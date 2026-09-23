@@ -1,7 +1,5 @@
-# Uncomment the next line to define a global platform for your project
 platform :ios, '16.0'
 
-# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
 project 'Runner', {
@@ -20,10 +18,11 @@ def flutter_root
     matches = line.match(/FLUTTER_ROOT=(.*)/)
     return matches[1].strip if matches
   end
-  raise "FLUTTER_ROOT not found in this file. See Flutter docs for installation details."
+  raise "FLUTTER_ROOT not found in this file."
 end
 
-require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper', __FILE__))
+# Caminho relativo correto para o podhelper do Flutter
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
 
 target 'Runner' do
   use_frameworks!
