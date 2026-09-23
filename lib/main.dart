@@ -6,6 +6,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:lottie/lottie.dart';
 import 'package:dart_cast/dart_cast.dart';
+import 'package:bonsoir/bonsoir.dart';
 import 'package:flutter_ios_airplay/flutter_ios_airplay.dart';
 import 'package:dlna_dart/dlna.dart';
 import 'package:shelf/shelf.dart' as shelf;
@@ -888,6 +889,7 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
 // ==========================================
 // TELA DA PLATAFORMA DO ALUNO (COM PROXY LOCAL E CAST)
 // ==========================================
+
 class TelaDeEstudosSegura extends StatefulWidget {
   const TelaDeEstudosSegura({super.key});
 
@@ -912,7 +914,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   final int _localProxyPort = 8080;
 
   // ==========================================
-  // SERVIÇO DE CAST UNIFICADO (dart_cast)
+  // SERVIÇO DE CAST UNIFICADO COM BONSOIR (GARANTE DESCOBERTA NO iOS)
   // ==========================================
   late final CastService _castService = CastService(
     discoveryProviders: [
@@ -1198,7 +1200,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   }
 
   // ==========================================
-  // IMPLEMENTAÇÃO DO SERVIDOR PROXY LOCAL
+  // IMPLEMENTAÇÃO DO SERVIDOR PROXY LOCAL OTIMIZADO PARA IMAGENS E VÍDEOS
   // ==========================================
   Future<void> _iniciarServidorProxyLocal() async {
     if (_localProxyServer != null) return;
@@ -1220,12 +1222,15 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
         proxyReq.headers['Referer'] = 'https://aluno.conserlar.com';
         proxyReq.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
-        // Repassa o cabeçalho de Range (essencial para o Chromecast / streaming)
         if (request.headers.containsKey('range')) {
           proxyReq.headers['Range'] = request.headers['range']!;
         }
 
         final streamedResponse = await client.send(proxyReq);
+
+        final isImage = targetUrlStr.toLowerCase().contains('.jpg') ||
+            targetUrlStr.toLowerCase().contains('.jpeg') ||
+            targetUrlStr.toLowerCase().contains('.png');
 
         final headers = <String, String>{
           'Access-Control-Allow-Origin': '*',
@@ -1238,6 +1243,11 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
             headers[key] = value;
           }
         });
+
+        // Força o tipo correto para imagens para que a TV/Chromecast não rejeite
+        if (isImage) {
+          headers['Content-Type'] = targetUrlStr.toLowerCase().contains('.png') ? 'image/png' : 'image/jpeg';
+        }
 
         return shelf.Response(
           streamedResponse.statusCode,
@@ -1279,7 +1289,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   }
 
   // ==========================================
-  // MENU DE TRANSMISSÃO MULTIPLATAFORMA UNIFICADO (dart_cast)
+  // MENU DE TRANSMISSÃO MULTIPLATAFORMA UNIFICADO
   // ==========================================
   void _mostrarMenuDispositivosTransmissao() {
     if (_currentMediaUrl.isEmpty) {
@@ -1384,7 +1394,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   }
 
   // ==========================================
-  // FUNÇÃO DE ENVIO COM PROXY LOCAL APLICADO
+  // FUNÇÃO DE ENVIO COM PROXY LOCAL E TRATAMENTO DE TIPO
   // ==========================================
   Future<void> _enviarMidiaParaDispositivo(CastDevice device) async {
     debugPrint("[Cast] Conectando ao device: ${device.name} [IP:${device.address}]");
@@ -1408,7 +1418,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
       final media = CastMedia(
         url: urlProxyLocal,
         title: _currentMediaTitle.isNotEmpty ? _currentMediaTitle : 'Esquema Conserlar',
-        type: CastMediaType.mp4, // O Chromecast processa a stream tratada pelo proxy
+        type: CastMediaType.mp4,
       );
 
       await session.loadMedia(media);
@@ -1525,10 +1535,19 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   void _acionarAirPlayNativo() async {
     if (_currentMediaUrl.isNotEmpty) {
       try {
-        // Dispara a URL atual direto para o player nativo com AirPlay do iOS
-        await FlutterIosAirplay.url(url: _currentMediaUrl);
+        // Converte a URL do Bunny CDN para passar pelo proxy local injetando os headers
+        final urlProxyLocal = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
+        debugPrint("[AirPlay] URL Proxy gerada: $urlProxyLocal");
+
+        // Dispara a URL tratada pelo proxy para a Apple TV via AirPlay
+        await FlutterIosAirplay.url(url: urlProxyLocal);
       } catch (e) {
         debugPrint("Erro no AirPlay: $e");
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Erro ao iniciar AirPlay: $e"), backgroundColor: Colors.red),
+          );
+        }
       }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1573,7 +1592,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _localProxyServer?.close(force: true); // Encerra o servidor proxy ao fechar a tela
+    _localProxyServer?.close(force: true);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
