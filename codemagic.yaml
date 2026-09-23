@@ -1,0 +1,20 @@
+workflows:
+  ios-release-workflow:
+    name: Build iOS Release para Sideload
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      xcode: latest
+    scripts:
+      - name: Instalar dependencias
+        script: |
+          flutter pub get
+      - name: Limpar build anterior
+        script: |
+          flutter clean
+          flutter pub get
+      - name: Construir IPA forçando iOS 16 no Xcode
+        script: |
+          flutter build ipa --release --no-codesign --dart-define=CI=true
+    artifacts:
+      - build/ios/ipa/*.ipa
