@@ -69,21 +69,23 @@
        <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
     
-    <!-- Permissões de Rede Local para comunicação com a placa ESP32 -->
+    <!-- Permissões de Rede Local e Bonjour para Chromecast, DLNA e ESP32 -->
     <key>NSLocalNetworkUsageDescription</key>
-    <string>O aplicativo precisa acessar a rede local para se conectar e configurar o dispositivo ConsertestScan.</string>
+    <string>O aplicativo precisa acessar a rede local para descobrir TVs, Chromecasts e se conectar ao dispositivo ConsertestScan.</string>
     <key>NSBonjourServices</key>
     <array>
         <string>_http._tcp</string>
+        <string>_googlecast._tcp</string>
+        <string>_dlna._tcp</string>
     </array>
 
     <!-- Autorização para abrir os Ajustes do iOS a partir do app -->
     <key>LSApplicationQueriesSchemes</key>
-        <array>
-            <string>app-settings</string>
-            <string>App-Prefs</string>
-            <string>prefs</string>
-        </array>
+    <array>
+        <string>app-settings</string>
+        <string>App-Prefs</string>
+        <string>prefs</string>
+    </array>
 
 </dict>
 </plist>
