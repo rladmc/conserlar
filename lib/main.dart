@@ -1634,7 +1634,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
 }
 
 // ==========================================
-// WIDGET UNIFICADO DE BUSCA (CHROMECAST + DLNA)
+// WIDGET DE BUSCA EXCLUSIVO PARA CHROMECAST (BONSOIR + IPv4 LIMPO)
 // ==========================================
 class _BonsoirDeviceListWidget extends StatefulWidget {
   final Function(CastDevice) onDeviceSelected;
@@ -1646,81 +1646,77 @@ class _BonsoirDeviceListWidget extends StatefulWidget {
 
 class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
   BonsoirDiscovery? _chromecastDiscovery;
-  BonsoirDiscovery? _dlnaDiscovery;
-
   final List<CastDevice> _foundDevices = [];
   bool _isSearching = true;
 
   @override
   void initState() {
     super.initState();
-    _startAllDiscoveries();
+    _startChromecastDiscovery();
   }
 
-  void _startAllDiscoveries() async {
-    // 1. Inicia busca por Chromecast
+  void _startChromecastDiscovery() async {
     _chromecastDiscovery = BonsoirDiscovery(type: '_googlecast._tcp');
     await _chromecastDiscovery!.initialize();
-    _listenToDiscovery(_chromecastDiscovery!, CastProtocol.chromecast);
-    await _chromecastDiscovery!.start();
 
-    // 2. Inicia busca por DLNA
-    _dlnaDiscovery = BonsoirDiscovery(type: '_dlna._tcp');
-    await _dlnaDiscovery!.initialize();
-    _listenToDiscovery(_dlnaDiscovery!, CastProtocol.dlna);
-    await _dlnaDiscovery!.start();
-  }
-
-  void _listenToDiscovery(BonsoirDiscovery discovery, CastProtocol protocol) {
-    discovery.eventStream!.listen((event) {
+    _chromecastDiscovery!.eventStream!.listen((event) {
       if (event is BonsoirDiscoveryServiceFoundEvent) {
-        event.service?.resolve(discovery.serviceResolver);
+        event.service?.resolve(_chromecastDiscovery!.serviceResolver);
       } else if (event is BonsoirDiscoveryServiceResolvedEvent) {
         final resolvedService = event.service;
         if (resolvedService != null) {
           final List<String>? addresses = resolvedService.hostAddresses;
 
           if (addresses != null && addresses.isNotEmpty) {
-            final String serviceIp = addresses.first;
-
-            // Limpa o nome do dispositivo
-            String deviceName = resolvedService.name;
-            if (deviceName.contains('.')) {
-              deviceName = deviceName.split('.').first;
+            // Filtra estritamente para pegar apenas IPv4 (evita o IP IPv6 gigantesco)
+            String? ipv4Address;
+            for (var addr in addresses) {
+              if (!addr.contains(':') && addr.split('.').length == 4) {
+                ipv4Address = addr;
+                break;
+              }
             }
 
-            final device = CastDevice(
-              id: resolvedService.name,
-              name: deviceName,
-              address: InternetAddress(serviceIp),
-              port: resolvedService.port,
-              protocol: protocol,
-            );
+            if (ipv4Address != null) {
+              String deviceName = resolvedService.name;
+              if (deviceName.contains('.')) {
+                deviceName = deviceName.split('.').first;
+              }
 
-            // Evita duplicatas na lista com base no IP
-            if (!_foundDevices.any((d) => d.address.address == device.address.address)) {
-              if (mounted) {
-                setState(() {
-                  _foundDevices.add(device);
-                  _isSearching = false;
-                });
+              final device = CastDevice(
+                id: resolvedService.name,
+                name: deviceName,
+                address: InternetAddress(ipv4Address), // IP limpo em IPv4
+                port: resolvedService.port,
+                protocol: CastProtocol.chromecast,
+              );
+
+              // Evita duplicatas
+              if (!_foundDevices.any((d) => d.address.address == device.address.address)) {
+                if (mounted) {
+                  setState(() {
+                    _foundDevices.add(device);
+                    _isSearching = false;
+                  });
+                }
               }
             }
           }
         }
       }
     });
+
+    await _chromecastDiscovery!.start();
   }
 
   @override
   void dispose() {
     _chromecastDiscovery?.stop();
-    _dlnaDiscovery?.stop();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) {
+  build(BuildContext context) {
     if (_foundDevices.isEmpty) {
       return Center(
         child: Column(
@@ -1729,7 +1725,7 @@ class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
             const CircularProgressIndicator(color: Color(0xFF00E676)),
             const SizedBox(height: 12),
             Text(
-              _isSearching ? "Procurando Chromecasts e TVs DLNA..." : "Nenhum aparelho encontrado",
+              _isSearching ? "Procurando Chromecasts na rede..." : "Nenhum Chromecast encontrado",
               style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
           ],
@@ -1741,16 +1737,11 @@ class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
       itemCount: _foundDevices.length,
       itemBuilder: (context, index) {
         final device = _foundDevices[index];
-        final bool isDlna = device.protocol == CastProtocol.dlna;
-
         return ListTile(
-          leading: Icon(
-            isDlna ? Icons.tv : Icons.cast,
-            color: const Color(0xFF00E676),
-          ),
+          leading: const Icon(Icons.cast, color: Color(0xFF00E676)),
           title: Text(device.name, style: const TextStyle(color: Colors.white)),
           subtitle: Text(
-            "${isDlna ? 'DLNA' : 'Chromecast'} • IP: ${device.address.address}:${device.port}",
+            "Chromecast • IP: ${device.address.address}:${device.port}",
             style: const TextStyle(color: Colors.grey, fontSize: 11),
           ),
           trailing: const Icon(Icons.cast_connected, color: Colors.white70),
