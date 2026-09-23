@@ -1,0 +1,25 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:background="#FFFFFF">>
+
+    <TextView
+        android:id="@+id/txtProgressoEtapa"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Iniciando etapa 0/64..."
+        android:textSize="18sp"
+        android:textColor="#333333"
+        android:textStyle="bold" />
+
+    <ProgressBar
+        android:id="@+id/progressSamsung"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:max="64"
+        android:progress="0" />
+</LinearLayout>

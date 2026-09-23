@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:gravity="center"
+    android:background="#FF424242">
+
+    <!-- ÍCONE DE ADVERTÊNCIA GIGANTE -->
+
+    <!-- TÍTULO DO ERRO -->
+    <TextView
+        android:id="@+id/txtIconeAdvertencia"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="0dp"
+        android:gravity="center"
+        android:text="⚠"
+        android:textStyle="bold"
+        android:textColor="#FFFFD700"
+        android:textSize="80sp" />
+
+    <TextView
+        android:id="@+id/txtTituloErro"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Título do Erro"
+        android:textStyle="bold"
+        android:textColor="#FFD32F2F"
+        android:gravity="center"
+        android:textSize="50sp"
+        android:layout_marginBottom="16dp" />
+
+    <!-- MENSAGEM PRINCIPAL DO ERRO -->
+    <TextView
+        android:id="@+id/txtMensagemErro"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Mensagem do erro"
+        android:textStyle="bold"
+        android:textColor="#00FF00"
+        android:gravity="center"
+        android:textSize="20sp"
+        android:lineSpacingExtra="8sp"
+        android:layout_marginBottom="16dp"
+        android:paddingLeft="16dp"
+        android:paddingRight="16dp" />
+
+    <!-- INFORMAÇÃO ADICIONAL -->
+    <TextView
+        android:id="@+id/txtInfoAdicional"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Informação adicional"
+        android:gravity="center"
+        android:textSize="17sp"
+        android:lineSpacingExtra="6sp"
+        android:textColor="#FFFFFF"
+        android:paddingLeft="16dp"
+        android:paddingRight="16dp" />
+
+</LinearLayout>

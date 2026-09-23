@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    android:background="@drawable/bg_botao_noite">
+
+    <com.airbnb.lottie.LottieAnimationView
+        android:id="@+id/lottie_background"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:lottie_rawRes="@raw/scan_matrix"
+        app:lottie_autoPlay="true"
+        app:lottie_loop="true"
+        android:scaleType="fitXY"
+        android:alpha="0.4" />
+
+    <LinearLayout
+        android:id="@+id/layoutInicial"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="24dp"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:background="@android:color/transparent">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:gravity="center"
+            android:text="@string/tester_title_1"
+            android:shadowColor="#000000"
+            android:shadowDx="5"
+            android:shadowDy="5"
+            android:shadowRadius="5"
+            android:textColor="#FFFFFF"
+            android:textSize="26sp"
+            android:textStyle="bold" />
+
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="250dp"
+            android:layout_marginBottom="10dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/consertest" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:gravity="center"
+            android:text="@string/tester_title_2"
+            android:shadowColor="#000000"
+            android:shadowDx="5"
+            android:shadowDy="5"
+            android:shadowRadius="5"
+            android:textColor="#FFFFFF"
+            android:textSize="26sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:gravity="center"
+            android:text="@string/bluetooth_connection"
+            android:shadowColor="#000000"
+            android:shadowDx="5"
+            android:shadowDy="5"
+            android:shadowRadius="5"
+            android:textColor="#3498db"
+            android:textSize="18sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnIniciarControle"
+            android:layout_width="match_parent"
+            android:layout_height="65dp"
+            android:text="@string/btn_start_control"
+            app:cornerRadius="30dp"
+            android:shadowColor="#000000"
+            android:shadowDx="5"
+            android:shadowDy="5"
+            android:shadowRadius="5"
+            app:strokeColor="#FFFFFF"
+            app:strokeWidth="3dp"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:background="@drawable/bg_botao_verde1"
+            app:backgroundTint="@null"
+            android:stateListAnimator="@null"
+            android:textColor="#ffffff"
+            android:layout_marginBottom="14dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnIniciarSimulac"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:layout_marginBottom="14dp"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:elevation="50dp"
+            android:shadowColor="#000000"
+            android:shadowDx="5"
+            android:shadowDy="5"
+            android:shadowRadius="5"
+            android:text="@string/btn_start_simulation"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/bg_botao_verde"
+            app:backgroundTint="@null"
+            android:stateListAnimator="@null"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:cornerRadius="30dp"
+            app:strokeColor="#FFFFFF"
+            app:strokeWidth="3dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnManual"
+            android:layout_width="match_parent"
+            android:layout_height="55dp"
+            android:layout_marginBottom="14dp"
+            android:background="@drawable/bg_botao_azul"
+            app:backgroundTint="@null"
+            android:stateListAnimator="@null"
+            android:shadowColor="#000000"
+            android:shadowDx="5"
+            android:shadowDy="5"
+            android:shadowRadius="5"
+            android:text="@string/btn_instruction_manual"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            app:cornerRadius="30dp"
+            app:strokeColor="#FFFFFF"
+            app:strokeWidth="3dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnAtualizacao"
+            android:layout_width="match_parent"
+            android:layout_height="55dp"
+            android:background="@drawable/bg_botao_cinza"
+            app:backgroundTint="@null"
+            android:stateListAnimator="@null"
+            android:shadowColor="#000000"
+            android:shadowDx="5"
+            android:shadowDy="5"
+            android:shadowRadius="5"
+            android:text="@string/btn_firmware_update"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            app:cornerRadius="30dp"
+            app:strokeColor="#FFFFFF"
+            app:strokeWidth="3dp" />
+
+        <TextView
+            android:id="@+id/txtStatusSoftware"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#bdc3c7"
+            android:textSize="14sp"
+            android:gravity="center"
+            android:layout_marginTop="15dp"
+            android:text="@string/firmware_status_loading" />
+
+    </LinearLayout>
+</FrameLayout>

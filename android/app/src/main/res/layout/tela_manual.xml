@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    android:orientation="vertical"
+    android:background="#FFFFFF">
+
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="MANUAL DE INSTRUÇÕES"
+            android:textColor="#2C3E50"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:padding="20dp"
+            android:background="#E8F5E8" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:padding="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- CONTEÚDO DO MANUAL ORIGINAL -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Seja bem-vindo!\nAgradecemos por escolher mais um produto Conserlar."
+                    android:textColor="#2C3E50"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="TESTADOR"
+                    android:textColor="#2C3E50"
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:padding="20dp"
+                    android:background="#E8F5E8" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="1 - Conexão Bluetooth"
+                    android:textColor="#2C3E50"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:gravity="left"
+                    android:layout_marginBottom="8dp" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Os passos 'a' e 'b', só seram necessarios na primeira vez, caso já os tenha executados pular para o passo 'c'. \n\n a) - O primeiro passo é acessar as configurações de Bluetooth do seu dispositivo. Em seguida, localize na lista de dispositivos disponíveis o nome “ConserTestScan Inversora”. Toque sobre ele para iniciar o processo de pareamento — quando a solicitação aparecer, confirme selecionando “Parear”."
+                    android:textColor="#2C3E50"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:justificationMode="inter_word"
+                    android:gravity="left"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="b) - Em seguida, abra o aplicativo e selecione a opção “Iniciar Controle”. O app solicitará permissão para acessar os dispositivos Bluetooth próximos — conceda tocando em “Permitir”.\n\n c)- Observe que o LED superior do Testador e Simulador estará piscando em vermelho, indicando que está pronto para conexão. Ao abrir o app, Toque em “Listar Dispositivos Bluetooth” para exibir todos os dispositivos pareados e localize “ConserTestScan Inversora”.\n Ao selecioná-lo, o aplicativo abrirá a tela de seleção de marcas. Nesse momento, o LED superior acenderá em azul, confirmando que a conexão foi estabelecida com sucesso e o sistema está pronto para uso.\n"
+                    android:textColor="#2C3E50"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:justificationMode="inter_word"
+                    android:gravity="left"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="2 - Selecionando a Marca"
+                    android:textColor="#2C3E50"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:gravity="left"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Na tela de seleção de Marcas, será visualisado 4 Marcas, sendo essas Midea, Philco, Hisense e Samsung, ao clicar em Midea ou Hisense, já será redirecionada para tela de Controle do Motor, selecionado Philco ou Samsung sera levado para uma segunda tela de opção, no caso da Philco, terá que escolher entre os modelos PLS11 e PLS12 e depois de escolher será direcionado para a tela de Controle de Motor e caso selecione Samsung, terá que escolher se será a Placa Inversora de IPM Único ou Duplo e logo a seguir escolher se está trabalhando com um motor Direct Drive ou um Motor a Correia."
+                    android:textColor="#2C3E50"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:justificationMode="inter_word"
+                    android:gravity="left"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="3 - Tela Controle de Motor"
+                    android:textColor="#2C3E50"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:gravity="left"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Na tela de Controle do Motor, é possível visualizar o valor de RPM em zero e seis botões de controle. (Na Philco só aparece 5, pois não tem o Habilitar Motor.
+
+Antes de qualquer operação, pressione o botão “Habilitar Motor”. Essa ação informa à placa que o sistema está pronto para receber comandos. Na versão Samsung será aberta uma barra de progressão de 64 passos, só depois disso que a inversora Samsung estará habilitada.
+
+Ao habilitar o motor, o LED inferior do Testador e Simulador, que antes estava vermelho, passará a verde(em algumas versões aceso e outras piscando), indicando que o motor está pronto para funcionamento."
+                    android:textColor="#2C3E50"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:justificationMode="inter_word"
+                    android:gravity="left"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="4 - Comandos do Motor"
+                    android:textColor="#2C3E50"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:gravity="left"
+                    android:layout_marginBottom="8dp" />
+
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:gravity="left"
+                    android:justificationMode="inter_word"
+                    android:text="Após habilitar o motor, é possível acionar sua rotação através dos controles disponíveis na tela principal.
+
+Os comandos de movimento normal são:
+
+\n\nDIREITA – faz o motor girar no sentido horário em baixa velocidade, em alguns modelos podendo chegar a 45RPM.
+
+\n\nESQUERDA – faz o motor girar no sentido anti-horário  em baixa velocidade, em alguns modelos podendo chegar a 45RPM.
+
+\n\nAGITAR – esse botão só aparece no Modelo MIDEA, esse modo faz o motor girar horário e anti-horário sozinho;
+
+\n\nPARAR MOTOR – envia o comando de parada para o motor, alguns modelos param imediatamente outras descem a velocidade gradativamente até sua parada total.
+
+\n\nAGITAÇÃO – esse botão só aparece no Modelo Samsung IPM ÚNICO, esse modo faz o motor girar horário e anti-horário sozinho;
+
+\n\nAGITAÇÃO DUPLA – esse botão só aparece no Modelo Samsung IPM DUPLO, esse modo faz o motores girararem um ao inverso do outro, quando um esta horário o outro estará anti-horário.
+
+\n\nAlém disso, o sistema conta com os modos de centrifugação, que realizam a rotação em alta velocidade no sentido horário:
+
+\n\nLENTA – gira o motor entre 400 e 600 RPM (depende da Marca);
+
+\n\nRÁPIDA – gira o motor entre 1000 a 1500 RPM (depende da Marca);
+
+
+
+\n\nEsses recursos permitem testar tanto as rotações normais quanto os modos de centrifugação, garantindo uma análise completa do desempenho do motor."
+                    android:textColor="#2C3E50"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="SIMULADOR"
+                    android:textColor="#2C3E50"
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:padding="20dp"
+                    android:background="#E8F5E8" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="1 - Conexão Bluetooth"
+                    android:textColor="#2C3E50"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:gravity="left"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Selecione a opção “Iniciar Simulação”. Observe que o LED superior do Testador e Simulador estará piscando em vermelho, indicando que está pronto para conexão. Toque em “Listar Dispositivos Bluetooth” para exibir todos os dispositivos pareados e localize “ConserTestScan Inversora”.\nAo selecioná-lo, o aplicativo abrirá a tela de seleção de marcas e familias. Nesse momento, o LED superior acenderá em azul, confirmando que a conexão foi estabelecida com sucesso e o sistema está pronto para uso.\n"
+                    android:textColor="#2C3E50"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:justificationMode="inter_word"
+                    android:gravity="left"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="2 - Selecionando a Marca e Família"
+                    android:textColor="#2C3E50"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:gravity="left"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Na tela de seleção de Marcas e Famílias, será visualisado 6 botões, sendo esses Midea Família LS, Midea Família MF, Philco Família PLS11, Philco Família PLS12, Hisense e Samsung,ao clicar em qualquer um dos botões abrirá uma nova tela com um CI em cinza, quando começar a Comunicação o mesmo ficará verde e se após 2 minutos não tiver comunicação ficará vermelho acusando erro.  "
+                    android:textColor="#2C3E50"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:justificationMode="inter_word"
+                    android:gravity="left"
+                    android:layout_marginBottom="8dp" />
+
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="VIDEOS"
+                    android:textColor="#2C3E50"
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:padding="20dp"
+                    android:background="#E8F5E8" />
+
+                <TextView
+                    android:id="@+id/linkText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#2C3E50"
+                    android:textSize="16sp"
+                    android:gravity="center"
+                    android:layout_margin="16dp"
+                    android:autoLink="none"
+                    android:linksClickable="true"
+                    android:textColorLink="#00BFFF"/>
+
+
+
+
+            </LinearLayout>
+        </ScrollView>
+
+    </LinearLayout>
+
