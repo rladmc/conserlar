@@ -887,7 +887,7 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
 }
 
 // ==========================================
-// TELA DA PLATAFORMA DO ALUNO (COM PROXY LOCAL E CAST)
+// TELA DA PLATAFORMA DO ALUNO (COM PROXY LOCAL E BONSOIR iOS)
 // ==========================================
 
 class TelaDeEstudosSegura extends StatefulWidget {
@@ -914,7 +914,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   final int _localProxyPort = 8080;
 
   // ==========================================
-  // SERVIÇO DE CAST UNIFICADO COM BONSOIR (GARANTE DESCOBERTA NO iOS)
+  // SERVIÇO DE CAST UNIFICADO (ANDROID)
   // ==========================================
   late final CastService _castService = CastService(
     discoveryProviders: [
@@ -973,7 +973,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
             });
             final bool dispararMenu = data['abrirMenu'] ?? false;
 
-            debugPrint("Mídia capturada -> URL: $_currentMediaUrl \vert{} Tipo:$_currentMediaType");
+            debugPrint("Mídia capturada -> URL: $_currentMediaUrl | Tipo:$_currentMediaType");
 
             if (dispararMenu && _currentMediaUrl.isNotEmpty) {
               _mostrarMenuDispositivosTransmissao();
@@ -1200,7 +1200,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   }
 
   // ==========================================
-  // IMPLEMENTAÇÃO DO SERVIDOR PROXY LOCAL OTIMIZADO PARA IMAGENS E VÍDEOS
+  // SERVIDOR PROXY LOCAL (BUNNY CDN)
   // ==========================================
   Future<void> _iniciarServidorProxyLocal() async {
     if (_localProxyServer != null) return;
@@ -1218,7 +1218,6 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
         final targetUri = Uri.parse(targetUrlStr);
         final proxyReq = http.Request('GET', targetUri);
 
-        // Injeta os cabeçalhos exigidos pelo Bunny CDN
         proxyReq.headers['Referer'] = 'https://aluno.conserlar.com';
         proxyReq.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
@@ -1244,7 +1243,6 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
           }
         });
 
-        // Força o tipo correto para imagens para que a TV/Chromecast não rejeite
         if (isImage) {
           headers['Content-Type'] = targetUrlStr.toLowerCase().contains('.png') ? 'image/png' : 'image/jpeg';
         }
@@ -1289,7 +1287,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   }
 
   // ==========================================
-  // MENU DE TRANSMISSÃO MULTIPLATAFORMA UNIFICADO
+  // MENU DE TRANSMISSÃO MULTIPLATAFORMA
   // ==========================================
   void _mostrarMenuDispositivosTransmissao() {
     if (_currentMediaUrl.isEmpty) {
@@ -1332,7 +1330,14 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
               ),
               const Divider(color: Colors.grey),
               Expanded(
-                child: StreamBuilder<List<CastDevice>>(
+                child: Platform.isIOS
+                    ? _BonsoirDeviceListWidget(
+                  onDeviceSelected: (device) async {
+                    Navigator.pop(context);
+                    await _enviarMidiaParaDispositivo(device);
+                  },
+                )
+                    : StreamBuilder<List<CastDevice>>(
                   stream: _castService.startDiscovery(),
                   builder: (context, snapshot) {
                     if (!snapshot.hasData || snapshot.data!.isEmpty) {
@@ -1393,9 +1398,6 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
     );
   }
 
-  // ==========================================
-  // FUNÇÃO DE ENVIO COM PROXY LOCAL E TRATAMENTO DE TIPO
-  // ==========================================
   Future<void> _enviarMidiaParaDispositivo(CastDevice device) async {
     debugPrint("[Cast] Conectando ao device: ${device.name} [IP:${device.address}]");
 
@@ -1535,11 +1537,9 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   void _acionarAirPlayNativo() async {
     if (_currentMediaUrl.isNotEmpty) {
       try {
-        // Converte a URL do Bunny CDN para passar pelo proxy local injetando os headers
         final urlProxyLocal = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
         debugPrint("[AirPlay] URL Proxy gerada: $urlProxyLocal");
 
-        // Dispara a URL tratada pelo proxy para a Apple TV via AirPlay
         await FlutterIosAirplay.url(url: urlProxyLocal);
       } catch (e) {
         debugPrint("Erro no AirPlay: $e");
@@ -1629,6 +1629,106 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
           ],
         ),
       ),
+    );
+  }
+}
+
+// ==========================================
+// WIDGET AUXILIAR DE BUSCA BONSOIR (ATUALIZADO)
+// ==========================================
+class _BonsoirDeviceListWidget extends StatefulWidget {
+  final Function(CastDevice) onDeviceSelected;
+  const _BonsoirDeviceListWidget({required this.onDeviceSelected});
+
+  @override
+  State<_BonsoirDeviceListWidget> createState() => _BonsoirDeviceListWidgetState();
+}
+
+class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
+  BonsoirDiscovery? _discovery;
+  final List<CastDevice> _foundDevices = [];
+  bool _isSearching = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _startDiscovery();
+  }
+
+  void _startDiscovery() async {
+    _discovery = BonsoirDiscovery(type: '_googlecast._tcp');
+    await _discovery!.initialize();
+
+    _discovery!.eventStream!.listen((event) {
+      if (event is BonsoirDiscoveryServiceFoundEvent) {
+        event.service?.resolve(_discovery!.serviceResolver);
+      } else if (event is BonsoirDiscoveryServiceResolvedEvent) {
+        final resolvedService = event.service;
+        if (resolvedService != null) {
+          // Obtém o IP correto utilizando a propriedade atualizada da API do Bonsoir
+          final String serviceIp = resolvedService.hostAddress ?? '';
+
+          if (serviceIp.isNotEmpty) {
+            final device = CastDevice(
+              id: resolvedService.name,
+              name: resolvedService.name,
+              address: InternetAddress(serviceIp), // Converte para o InternetAddress exigido
+              port: resolvedService.port,
+              protocol: CastProtocol.chromecast,
+            );
+
+            if (!_foundDevices.any((d) => d.address.address == device.address.address)) {
+              if (mounted) {
+                setState(() {
+                  _foundDevices.add(device);
+                  _isSearching = false;
+                });
+              }
+            }
+          }
+        }
+      }
+    });
+
+    await _discovery!.start();
+  }
+
+  @override
+  void dispose() {
+    _discovery?.stop();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_foundDevices.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(color: Color(0xFF00E676)),
+            const SizedBox(height: 12),
+            Text(
+              _isSearching ? "Procurando TVs via Bonjour..." : "Nenhum aparelho encontrado",
+              style: const TextStyle(color: Colors.grey, fontSize: 13),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: _foundDevices.length,
+      itemBuilder: (context, index) {
+        final device = _foundDevices[index];
+        return ListTile(
+          leading: const Icon(Icons.cast, color: Color(0xFF00E676)),
+          title: Text(device.name, style: const TextStyle(color: Colors.white)),
+          subtitle: Text("IP: ${device.address.address}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
+          trailing: const Icon(Icons.cast_connected, color: Colors.white70),
+          onTap: () => widget.onDeviceSelected(device),
+        );
+      },
     );
   }
 }
