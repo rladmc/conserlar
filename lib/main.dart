@@ -1634,7 +1634,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
 }
 
 // ==========================================
-// WIDGET AUXILIAR DE BUSCA BONSOIR (ATUALIZADO)
+// WIDGET AUXILIAR DE BUSCA BONSOIR (CORRIGIDO E SEGURO)
 // ==========================================
 class _BonsoirDeviceListWidget extends StatefulWidget {
   final Function(CastDevice) onDeviceSelected;
@@ -1665,18 +1665,29 @@ class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
       } else if (event is BonsoirDiscoveryServiceResolvedEvent) {
         final resolvedService = event.service;
         if (resolvedService != null) {
-          // Obtém o IP correto utilizando a propriedade atualizada da API do Bonsoir
-          final String serviceIp = resolvedService.hostAddress ?? '';
+          // O Bonsoir armazena os IPs em uma lista (hostAddresses)
+          final List<String>? addresses = resolvedService.hostAddresses;
 
-          if (serviceIp.isNotEmpty) {
+          if (addresses != null && addresses.isNotEmpty) {
+            // Pega o primeiro IP válido da lista
+            final String serviceIp = addresses.first;
+
+            // Limpa um pouco o nome feio se ele vier muito poluído
+            String deviceName = resolvedService.name;
+            if (deviceName.contains('-')) {
+              // Exemplo: se vier "Quarto-Chromecast.local", limpa um pouco
+              deviceName = deviceName.replaceAll('.local', '');
+            }
+
             final device = CastDevice(
               id: resolvedService.name,
-              name: resolvedService.name,
-              address: InternetAddress(serviceIp), // Converte para o InternetAddress exigido
+              name: deviceName,
+              address: InternetAddress(serviceIp), // Passa o IP correto resolvido
               port: resolvedService.port,
               protocol: CastProtocol.chromecast,
             );
 
+            // Evita duplicatas na lista
             if (!_foundDevices.any((d) => d.address.address == device.address.address)) {
               if (mounted) {
                 setState(() {
@@ -1709,7 +1720,7 @@ class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
             const CircularProgressIndicator(color: Color(0xFF00E676)),
             const SizedBox(height: 12),
             Text(
-              _isSearching ? "Procurando TVs via Bonjour..." : "Nenhum aparelho encontrado",
+              _isSearching ? "Procurando dispositivos na rede..." : "Nenhum aparelho encontrado",
               style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
           ],
@@ -1724,7 +1735,7 @@ class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
         return ListTile(
           leading: const Icon(Icons.cast, color: Color(0xFF00E676)),
           title: Text(device.name, style: const TextStyle(color: Colors.white)),
-          subtitle: Text("IP: ${device.address.address}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
+          subtitle: Text("IP: ${device.address.address} • Porta: ${device.port}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
           trailing: const Icon(Icons.cast_connected, color: Colors.white70),
           onTap: () => widget.onDeviceSelected(device),
         );
