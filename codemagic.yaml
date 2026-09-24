@@ -8,9 +8,16 @@ workflows:
     scripts:
       - name: Instalar dependências
         script: flutter pub get
-      - name: Desativar exigência de Code Sign para build sem Team
+      - name: Limpar e desativar exigência de Code Sign e Team
         script: |
-          find ios -name "project.pbxproj" | xargs sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g'
-          find ios -name "project.pbxproj" | xargs sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g'
+          echo "Limpando propriedades de assinatura no projeto..."
+          find ios -name "project.pbxproj" | while read file; do
+            sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g'
+            sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g'
+            sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development";/CODE_SIGN_IDENTITY = "";/g'
+            sed -i '' 's/CODE_SIGN_IDENTITY = "iPhone Developer";/CODE_SIGN_IDENTITY = "";/g'
+          done
+          # Remove linhas de Development Team que bloqueiam o build sem conta paga
+          sed -i '' '/DEVELOPMENT_TEAM =/d' ios/Runner.xcodeproj/project.pbxproj || true
       - name: Build iOS App sem codesign
         script: flutter build ios --release --no-codesign
