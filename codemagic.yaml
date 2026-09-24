@@ -12,19 +12,24 @@ workflows:
           flutter pub get
       - name: Force iOS 16.0 Deployment Target in Xcode Project
         script: |
-          # Garante que o projeto gera a estrutura do iOS antes do patch
-          flutter precache --ios
+          echo "Forçando iOS 16.0 no projeto Xcode e Podfile..."
           
-          # Atualiza o deployment target para 16.0 diretamente no arquivo de projeto do Xcode (pbxproj)
+          # 1. Altera todas as ocorrências de deployment target no pbxproj para 16.0
           PBXPROJ="ios/Runner.xcodeproj/project.pbxproj"
           if [ -f "$PBXPROJ" ]; then
-            echo "Atualizando IPHONEOS_DEPLOYMENT_TARGET para 16.0 no pbxproj..."
-            sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g' "$PBXPROJ"
-            sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 14.0;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g' "$PBXPROJ"
-            sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g' "$PBXPROJ"
+            # Substitui qualquer versão antiga (11.0 até 15.6) por 16.0
+            python3 -c "
+            with open('$PBXPROJ', 'r') as f:
+                content = f.read()
+            import re
+            # Substitui IPHONEOS_DEPLOYMENT_TARGET por 16.0
+            content = re.sub(r'IPHONEOS_DEPLOYMENT_TARGET = \d+\.\d+;', 'IPHONEOS_DEPLOYMENT_TARGET = 16.0;', content)
+            with open('$PBXPROJ', 'w') as f:
+                f.write(content)
+            "
           fi
 
-          # Também ajusta o Podfile para garantir compatibilidade
+          # 2. Garante o platform :ios, '16.0' no Podfile
           cd ios
           if grep -q "platform :ios" Podfile; then
             sed -i '' "s/platform :ios, '.*'/platform :ios, '16.0'/g" Podfile
