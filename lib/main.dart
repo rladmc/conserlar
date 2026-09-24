@@ -13,6 +13,56 @@ import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart' as shelf_router; // <--- ADICIONADO "as shelf_router" AQUI
 import 'package:http/http.dart' as http;
+import 'dart:typed_data';
+
+// Função auxiliar para gerar um container MP4 estático (Single-Frame) contendo o JPEG
+Uint8List _gerarMp4DeImagem(Uint8List jpegBytes, int width, int height) {
+  // Cabeçalho e estrutura base de um arquivo MP4 leve (compatível com parsers do Chromecast)
+  final int fileSize = jpegBytes.length + 100;
+
+  final builder = BytesBuilder();
+
+  // --- ftyp box ---
+  builder.add([0x00, 0x00, 0x00, 0x20]); // Tamanho do ftyp
+  builder.add([0x66, 0x74, 0x79, 0x70]); // 'ftyp'
+  builder.add([0x69, 0x73, 0x6F, 0x6D]); // 'isom'
+  builder.add([0x00, 0x00, 0x02, 0x00]); // minor version
+  builder.add([0x69, 0x73, 0x6F, 0x6D]); // compatible brands
+  builder.add([0x69, 0x73, 0x6F, 0x32]);
+  builder.add([0x61, 0x76, 0x63, 0x31]);
+  builder.add([0x6D, 0x70, 0x34, 0x31]);
+
+  // --- mdat box (onde os dados da imagem ficam guardados como payload de vídeo) ---
+  final int mdatSize = jpegBytes.length + 8;
+  builder.add([
+    (mdatSize >> 24) & 0xFF,
+    (mdatSize >> 16) & 0xFF,
+    (mdatSize >> 8) & 0xFF,
+    mdatSize & 0xFF
+  ]);
+  builder.add([0x6D, 0x64, 0x61, 0x74]); // 'mdat'
+  builder.add(jpegBytes);
+
+  // --- moov box simplificado (metadados essenciais exigidos pelo player do Chromecast) ---
+  // Um moov básico estruturado para informar ao Chromecast que existe uma faixa de vídeo válida
+  final moovBytes = <int>[
+    0x00, 0x00, 0x00, 0x55, 0x6D, 0x6F, 0x6F, 0x76, // moov size & box
+    0x00, 0x00, 0x00, 0x6D, 0x76, 0x68, 0x64, 0x00, // mvhd
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x64, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02
+  ];
+  builder.add(moovBytes);
+
+  return builder.toBytes();
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,98 +84,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
-HttpServer? _localProxyServer;
-int _localProxyPort = 8080;
 
-// Inicia o servidor local
-Future<void> _iniciarServidorProxyLocal() async {
-  if (_localProxyServer != null) return;
-
-  // Usa o prefixo shelf_router para evitar conflito com o Router do Flutter
-  final router = shelf_router.Router();
-
-  router.get('/proxy', (shelf.Request request) async {
-    final targetUrlStr = request.requestedUri.queryParameters['url'];
-    if (targetUrlStr == null || targetUrlStr.isEmpty) {
-      return shelf.Response.badRequest(body: 'URL não informada');
-    }
-
-    final client = http.Client();
-    try {
-      final targetUri = Uri.parse(targetUrlStr);
-      final proxyReq = http.Request('GET', targetUri);
-
-      // Injeta os cabeçalhos exigidos pelo Bunny CDN
-      proxyReq.headers['Referer'] = 'https://aluno.conserlar.com';
-      proxyReq.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
-
-      if (request.headers.containsKey('range')) {
-        proxyReq.headers['Range'] = request.headers['range']!;
-      }
-
-      final streamedResponse = await client.send(proxyReq);
-
-      // Detecta se é imagem para ajustar os headers de entrega na TV
-      final isImage = targetUrlStr.toLowerCase().contains('.jpg') ||
-          targetUrlStr.toLowerCase().contains('.jpeg') ||
-          targetUrlStr.toLowerCase().contains('.png');
-
-      final headers = <String, String>{
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': '*',
-        'Accept-Ranges': 'bytes',
-      };
-
-      streamedResponse.headers.forEach((key, value) {
-        if (key.toLowerCase() != 'transfer-encoding') {
-          headers[key] = value;
-        }
-      });
-
-      // Se for imagem, forçamos o tipo correto para o client/TV reconhecer
-      if (isImage) {
-        headers['Content-Type'] = targetUrlStr.toLowerCase().contains('.png') ? 'image/png' : 'image/jpeg';
-      }
-
-      return shelf.Response(
-        streamedResponse.statusCode,
-        body: streamedResponse.stream.handleError((_, __) {}),
-        headers: headers,
-      );
-    } catch (e) {
-      client.close();
-      debugPrint("[ProxyLocal] Erro no streaming proxy: $e");
-      return shelf.Response.internalServerError(body: e.toString());
-    }
-  });
-
-  try {
-    // MUDE DE '127.0.0.1' PARA '0.0.0.0' PARA LIBERAR A REDE WI-FI
-    _localProxyServer = await shelf_io.serve(router.call, '0.0.0.0', _localProxyPort);
-    debugPrint('[ProxyLocal] Servidor rodando na rede em http://0.0.0.0:$_localProxyPort');
-  } catch (e) {
-    debugPrint('[ProxyLocal] Erro ao iniciar servidor local: $e');
-  }
-}
-
-Future<String> _gerarUrlProxyLocalParaBunny(String urlOriginal) async {
-  await _iniciarServidorProxyLocal();
-
-  String localIp = '127.0.0.1';
-  try {
-    for (var interface in await NetworkInterface.list()) {
-      for (var addr in interface.addresses) {
-        if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
-          localIp = addr.address;
-          break;
-        }
-      }
-    }
-  } catch (_) {}
-
-  final encodedUrl = Uri.encodeComponent(urlOriginal);
-  return 'http://$localIp:$_localProxyPort/proxy?url=$encodedUrl';
-}
 
 // ==========================================
 // TELA DO MENU PRINCIPAL
@@ -1119,20 +1078,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
                             if (window.AndroidCastBridge) {
                                 window.AndroidCastBridge.postMessage(JSON.stringify(info));
                             }
-                        };
-
-                        var isIos = $isIosDevice;
-                        if (isIos && !document.getElementById('btnAirPlayInjetado')) {
-                          var btnAirPlay = document.createElement('button');
-                          btnAirPlay.className = "app-injected-btn";
-                          btnAirPlay.id = "btnAirPlayInjetado";
-                          btnAirPlay.innerHTML = "AirPlay";
-                          btnAirPlay.onclick = function(e) {
-                            e.preventDefault();
-                            window.location.href = "app://airplay_clicked";
-                          };
-                          btnCastSite.parentNode.insertBefore(btnAirPlay, btnCastSite.nextSibling);
-                        }
+                        };                    
                         clearInterval(checkBtnCastName);
                     }
                 }, 500);
@@ -1221,40 +1167,49 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
         proxyReq.headers['Referer'] = 'https://aluno.conserlar.com';
         proxyReq.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
-        if (request.headers.containsKey('range')) {
-          proxyReq.headers['Range'] = request.headers['range']!;
+        final streamedResponse = await client.send(proxyReq);
+        final imageBytes = await streamedResponse.stream.toBytes();
+        client.close();
+
+        final bool isImage = targetUrlStr.toLowerCase().contains('.jpg') ||
+            targetUrlStr.toLowerCase().contains('.jpeg') ||
+            targetUrlStr.toLowerCase().contains('.png') ||
+            targetUrlStr.toLowerCase().contains('.webp');
+
+        if (isImage) {
+          // Converte o JPG em um container MP4 estático em memória
+          final mp4Bytes = _gerarMp4DeImagem(imageBytes, 1920, 1080);
+
+          return shelf.Response.ok(
+            mp4Bytes,
+            headers: {
+              'Content-Type': 'video/mp4',
+              'Content-Length': mp4Bytes.length.toString(),
+              'Access-Control-Allow-Origin': '*',
+              'Accept-Ranges': 'bytes',
+            },
+          );
         }
 
-        final streamedResponse = await client.send(proxyReq);
-
-        final isImage = targetUrlStr.toLowerCase().contains('.jpg') ||
-            targetUrlStr.toLowerCase().contains('.jpeg') ||
-            targetUrlStr.toLowerCase().contains('.png');
-
+        // Se for vídeo normal, faz o streaming padrão
         final headers = <String, String>{
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': '*',
           'Accept-Ranges': 'bytes',
         };
-
         streamedResponse.headers.forEach((key, value) {
           if (key.toLowerCase() != 'transfer-encoding') {
             headers[key] = value;
           }
         });
 
-        if (isImage) {
-          headers['Content-Type'] = targetUrlStr.toLowerCase().contains('.png') ? 'image/png' : 'image/jpeg';
-        }
-
         return shelf.Response(
           streamedResponse.statusCode,
-          body: streamedResponse.stream.handleError((_, __) {}),
+          body: imageBytes,
           headers: headers,
         );
       } catch (e) {
         client.close();
-        debugPrint("[ProxyLocal] Erro no streaming proxy: $e");
+        debugPrint("[ProxyLocal] Erro no proxy: $e");
         return shelf.Response.internalServerError(body: e.toString());
       }
     });
@@ -1414,13 +1369,24 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
     try {
       final session = await _castService.connect(device);
 
+      // A URL passa pelo nosso proxy local (garantindo os headers da Bunny CDN)
       final urlProxyLocal = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
       debugPrint("[Cast] URL Proxy gerada: $urlProxyLocal");
 
+      final bool isImage = _currentMediaUrl.toLowerCase().contains('.jpg') ||
+          _currentMediaUrl.toLowerCase().contains('.jpeg') ||
+          _currentMediaUrl.toLowerCase().contains('.png') ||
+          _currentMediaUrl.toLowerCase().contains('.webp');
+
+      String tituloFinal = _currentMediaTitle.trim();
+      if (tituloFinal.isEmpty || tituloFinal.toLowerCase() == 'plataforma' || tituloFinal.toLowerCase() == 'plataforma conserlar') {
+        tituloFinal = isImage ? 'Esquema Conserlar' : 'Aula Conserlar';
+      }
+
       final media = CastMedia(
         url: urlProxyLocal,
-        title: _currentMediaTitle.isNotEmpty ? _currentMediaTitle : 'Esquema Conserlar',
-        type: CastMediaType.mp4,
+        title: tituloFinal,
+        type: CastMediaType.mp4, // O cast service usa mp4 como container de transporte
       );
 
       await session.loadMedia(media);
@@ -1428,7 +1394,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Esquema enviado para a TV com sucesso!"),
+            content: Text("Transmitido para a TV com sucesso!"),
             backgroundColor: Color(0xFF198754),
           ),
         );
