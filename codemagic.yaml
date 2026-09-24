@@ -10,35 +10,30 @@ workflows:
       - name: Get Flutter packages
         script: |
           flutter pub get
-      - name: Fix iOS Minimum Deployment Target to 16.0
+      - name: Force iOS 16.0 Deployment Target in Xcode Project
         script: |
-          cd ios
+          # Garante que o projeto gera a estrutura do iOS antes do patch
+          flutter precache --ios
           
-          # Garante que o target do platform no topo seja 16.0
+          # Atualiza o deployment target para 16.0 diretamente no arquivo de projeto do Xcode (pbxproj)
+          PBXPROJ="ios/Runner.xcodeproj/project.pbxproj"
+          if [ -f "$PBXPROJ" ]; then
+            echo "Atualizando IPHONEOS_DEPLOYMENT_TARGET para 16.0 no pbxproj..."
+            sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g' "$PBXPROJ"
+            sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 14.0;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g' "$PBXPROJ"
+            sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g' "$PBXPROJ"
+          fi
+
+          # Também ajusta o Podfile para garantir compatibilidade
+          cd ios
           if grep -q "platform :ios" Podfile; then
             sed -i '' "s/platform :ios, '.*'/platform :ios, '16.0'/g" Podfile
           else
             sed -i '' "1s/^/platform :ios, '16.0'\n/" Podfile
           fi
-
-          # Adiciona o ajuste de deployment target de forma segura no post_install se já não existir
-          if ! grep -q "IPHONEOS_DEPLOYMENT_TARGET" Podfile; then
-            python3 -c "
-            with open('Podfile', 'r') as f:
-                content = f.read()
-            
-            # Procura o bloco post_install e injeta a linha de configuração do target 16.0
-            if 'post_install do |installer|' in content:
-                target_line = '\n    installer.pods_project.targets.each do |target|\n      target.build_configurations.each do |config|\n        config.build_settings[\x27IPHONEOS_DEPLOYMENT_TARGET\x27] = \x2716.0\x27\n      end\n    end'
-                content = content.replace('post_install do |installer|', 'post_install do |installer|' + target_line)
-                with open('Podfile', 'w') as f:
-                    f.write(content)
-            "
-          fi
           cd ..
       - name: Build iOS App (No Codesign for test)
         script: |
-          # O próprio flutter build executa o pod install no momento certo com todas as dependências geradas
           flutter build ios --release --no-codesign
       - name: Build Android App (APK)
         script: |
