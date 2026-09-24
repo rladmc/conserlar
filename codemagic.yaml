@@ -10,11 +10,13 @@ workflows:
       - name: Get Flutter packages
         script: |
           flutter pub get
-      - name: Forçar iOS 16 no project.pbxproj
+      - name: Forçar iOS 16 em todos os arquivos de configuração
         script: |
-          find ios -name "project.pbxproj" -exec sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g' {} +
-          find ios -name "project.pbxproj" -exec sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 15.5;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g' {} +
-          find ios -name "project.pbxproj" -exec sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 14.0;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g' {} +
+          # Varre todos os arquivos de projeto, xcsettings e pbxproj para matar qualquer menção ao iOS 15
+          find ios -name "*.pbxproj" -o -name "*.xcconfig" | xargs sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g'
+          find ios -name "*.pbxproj" -o -name "*.xcconfig" | xargs sed -i '' 's/TVOS_DEPLOYMENT_TARGET = [0-9.]*;/TVOS_DEPLOYMENT_TARGET = 16.0;/g'
+          # Garante o Info.plist principal também
+          plutil -replace MinimumOSVersion -string "16.0" ios/Runner/Info.plist || true
       - name: Build iOS App (No Codesign for test)
         script: |
           flutter build ios --release --no-codesign
