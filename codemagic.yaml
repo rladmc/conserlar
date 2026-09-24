@@ -7,10 +7,14 @@ workflows:
       xcode: latest
       cocoapods: default
     scripts:
-      - name: Limpar cache e atualizar dependências
+      - name: Get Flutter packages
         script: |
-          flutter clean
           flutter pub get
+      - name: Forçar iOS 16 no project.pbxproj
+        script: |
+          find ios -name "project.pbxproj" -exec sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g' {} +
+          find ios -name "project.pbxproj" -exec sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 15.5;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g' {} +
+          find ios -name "project.pbxproj" -exec sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 14.0;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g' {} +
       - name: Build iOS App (No Codesign for test)
         script: |
           flutter build ios --release --no-codesign
