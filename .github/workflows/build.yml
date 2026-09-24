@@ -27,8 +27,10 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Install dependencies
-        run: flutter pub get
+      - name: Clean Pub Cache and Get Dependencies
+        run: |
+          flutter pub cache clean -f
+          flutter pub get
 
       - name: Forçar iOS 16 em todos os arquivos do projeto
         run: |
