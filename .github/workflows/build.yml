@@ -26,13 +26,18 @@ jobs:
           flutter pub cache clean -f
           flutter pub get
 
-      - name: Forçar iOS 16 em todos os arquivos do projeto
+      - name: Forçar iOS 16 em todos os arquivos do projeto e no Package.swift do SPM
         run: |
           find ios -name "*.pbxproj" -o -name "*.xcconfig" | xargs sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g'
           plutil -replace MinimumOSVersion -string "16.0" ios/Runner/Info.plist || true
-
-      - name: Atualizar Configuração do Swift Package Manager do Flutter
-        run: flutter build ios --config-only --no-codesign
+          
+          # Gera a estrutura do SPM do Flutter para criarmos o arquivo Package.swift efêmero
+          flutter build ios --config-only --no-codesign
+          
+          # Força a versão 16.0 no Package.swift gerado pelo Flutter se ele existir
+          if [ -f "ios/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage/Package.swift" ]; then
+            sed -i '' 's/\.iOS("[0-9.]*")/\.iOS("16.0")/g' ios/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage/Package.swift
+          fi
 
       - name: Build iOS App (No Codesign)
         run: flutter build ios --release --no-codesign
