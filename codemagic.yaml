@@ -14,53 +14,31 @@ workflows:
         script: |
           cd ios
           
-          # Reescreve o Podfile com a estrutura limpa e correta exigida pelo CocoaPods e Flutter
-          cat << 'EOF' > Podfile
-          # Uncomment this line to define a global platform for your project
-          platform :ios, '16.0'
+          # Garante que o target do platform no topo seja 16.0
+          if grep -q "platform :ios" Podfile; then
+            sed -i '' "s/platform :ios, '.*'/platform :ios, '16.0'/g" Podfile
+          else
+            sed -i '' "1s/^/platform :ios, '16.0'\n/" Podfile
+          fi
 
-          # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
-          ENV['COCOAPODS_DISABLE_STATS'] = 'true'
-
-          project 'Runner', {
-            'Debug' => :debug,
-            'Profile' => :release,
-            'Release' => :release,
-          }
-
-          def flutter_root
-            generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcodebuildsettings'), __FILE__)
-            unless File.exist?(generated_xcode_build_settings_path)
-              raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
-            end
-
-            File.foreach(generated_xcode_build_settings_path) do |line|
-              matches = line.match(/FLUTTER_ROOT\=(.*)/)
-              return matches[1].strip if matches
-            end
-            raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcodebuildsettings, then run flutter pub get"
-          end
-
-          require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
-
-          flutter_ios_install_all_pods
-
-          post_install do |installer|
-            installer.pods_project.targets.each do |target|
-              flutter_additional_ios_build_settings(target)
-              target.build_configurations.each do |config|
-                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
-              end
-            end
-          end
-          EOF
-          
+          # Adiciona o ajuste de deployment target de forma segura no post_install se já não existir
+          if ! grep -q "IPHONEOS_DEPLOYMENT_TARGET" Podfile; then
+            python3 -c "
+            with open('Podfile', 'r') as f:
+                content = f.read()
+            
+            # Procura o bloco post_install e injeta a linha de configuração do target 16.0
+            if 'post_install do |installer|' in content:
+                target_line = '\n    installer.pods_project.targets.each do |target|\n      target.build_configurations.each do |config|\n        config.build_settings[\x27IPHONEOS_DEPLOYMENT_TARGET\x27] = \x2716.0\x27\n      end\n    end'
+                content = content.replace('post_install do |installer|', 'post_install do |installer|' + target_line)
+                with open('Podfile', 'w') as f:
+                    f.write(content)
+            "
+          fi
           cd ..
-      - name: Install CocoaPods dependencies
-        script: |
-          cd ios && pod install && cd ..
       - name: Build iOS App (No Codesign for test)
         script: |
+          # O próprio flutter build executa o pod install no momento certo com todas as dependências geradas
           flutter build ios --release --no-codesign
       - name: Build Android App (APK)
         script: |
