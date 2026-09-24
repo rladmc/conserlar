@@ -1,0 +1,16 @@
+workflows:
+  ios-workflow:
+    name: iOS Build
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      xcode: latest
+    scripts:
+      - name: Instalar dependências
+        script: flutter pub get
+      - name: Desativar exigência de Code Sign para build sem Team
+        script: |
+          find ios -name "project.pbxproj" | xargs sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g'
+          find ios -name "project.pbxproj" | xargs sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g'
+      - name: Build iOS App sem codesign
+        script: flutter build ios --release --no-codesign
