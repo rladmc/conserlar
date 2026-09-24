@@ -13,56 +13,7 @@ import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart' as shelf_router; // <--- ADICIONADO "as shelf_router" AQUI
 import 'package:http/http.dart' as http;
-import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 
-// Função auxiliar para gerar um container MP4 estático (Single-Frame) contendo o JPEG
-Uint8List _gerarMp4DeImagem(Uint8List jpegBytes, int width, int height) {
-  // Cabeçalho e estrutura base de um arquivo MP4 leve (compatível com parsers do Chromecast)
-  final int fileSize = jpegBytes.length + 100;
-
-  final builder = BytesBuilder();
-
-  // --- ftyp box ---
-  builder.add([0x00, 0x00, 0x00, 0x20]); // Tamanho do ftyp
-  builder.add([0x66, 0x74, 0x79, 0x70]); // 'ftyp'
-  builder.add([0x69, 0x73, 0x6F, 0x6D]); // 'isom'
-  builder.add([0x00, 0x00, 0x02, 0x00]); // minor version
-  builder.add([0x69, 0x73, 0x6F, 0x6D]); // compatible brands
-  builder.add([0x69, 0x73, 0x6F, 0x32]);
-  builder.add([0x61, 0x76, 0x63, 0x31]);
-  builder.add([0x6D, 0x70, 0x34, 0x31]);
-
-  // --- mdat box (onde os dados da imagem ficam guardados como payload de vídeo) ---
-  final int mdatSize = jpegBytes.length + 8;
-  builder.add([
-    (mdatSize >> 24) & 0xFF,
-    (mdatSize >> 16) & 0xFF,
-    (mdatSize >> 8) & 0xFF,
-    mdatSize & 0xFF
-  ]);
-  builder.add([0x6D, 0x64, 0x61, 0x74]); // 'mdat'
-  builder.add(jpegBytes);
-
-  // --- moov box simplificado (metadados essenciais exigidos pelo player do Chromecast) ---
-  // Um moov básico estruturado para informar ao Chromecast que existe uma faixa de vídeo válida
-  final moovBytes = <int>[
-    0x00, 0x00, 0x00, 0x55, 0x6D, 0x6F, 0x6F, 0x76, // moov size & box
-    0x00, 0x00, 0x00, 0x6D, 0x76, 0x68, 0x64, 0x00, // mvhd
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-    0x00, 0x00, 0x00, 0x01, 0x00, 0x64, 0x00, 0x00,
-    0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02
-  ];
-  builder.add(moovBytes);
-
-  return builder.toBytes();
-}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1154,73 +1105,102 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
     final router = shelf_router.Router();
 
     router.get('/proxy', (shelf.Request request) async {
-      final targetUrlStr = request.requestedUri.queryParameters['url'];
+      final targetUrlStr =
+      request.requestedUri.queryParameters['url'];
+
       if (targetUrlStr == null || targetUrlStr.isEmpty) {
-        return shelf.Response.badRequest(body: 'URL não informada');
+        return shelf.Response.badRequest(
+          body: 'URL não informada',
+        );
       }
 
       final client = http.Client();
+
       try {
         final targetUri = Uri.parse(targetUrlStr);
-        final proxyReq = http.Request('GET', targetUri);
 
-        proxyReq.headers['Referer'] = 'https://aluno.conserlar.com';
-        proxyReq.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+        final proxyReq = http.Request(
+          'GET',
+          targetUri,
+        );
 
-        final streamedResponse = await client.send(proxyReq);
-        final imageBytes = await streamedResponse.stream.toBytes();
-        client.close();
+        // =====================================================
+        // HEADERS EXIGIDOS PELA BUNNY CDN
+        // =====================================================
 
-        final bool isImage = targetUrlStr.toLowerCase().contains('.jpg') ||
-            targetUrlStr.toLowerCase().contains('.jpeg') ||
-            targetUrlStr.toLowerCase().contains('.png') ||
-            targetUrlStr.toLowerCase().contains('.webp');
+        proxyReq.headers['Referer'] =
+        'https://aluno.conserlar.com';
 
-        if (isImage) {
-          // Converte o JPG em um container MP4 estático em memória
-          final mp4Bytes = _gerarMp4DeImagem(imageBytes, 1920, 1080);
+        proxyReq.headers['User-Agent'] =
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) '
+            'AppleWebKit/605.1.15 '
+            'Version/16.0 Mobile/15E148 Safari/604.1';
 
-          return shelf.Response.ok(
-            mp4Bytes,
-            headers: {
-              'Content-Type': 'video/mp4',
-              'Content-Length': mp4Bytes.length.toString(),
-              'Access-Control-Allow-Origin': '*',
-              'Accept-Ranges': 'bytes',
-            },
-          );
-        }
+        final streamedResponse =
+        await client.send(proxyReq);
 
-        // Se for vídeo normal, faz o streaming padrão
-        final headers = <String, String>{
-          'Access-Control-Allow-Origin': '*',
-          'Accept-Ranges': 'bytes',
-        };
-        streamedResponse.headers.forEach((key, value) {
-          if (key.toLowerCase() != 'transfer-encoding') {
-            headers[key] = value;
-          }
-        });
+        final bytes =
+        await streamedResponse.stream.toBytes();
+
+        final contentType =
+            streamedResponse.headers['content-type'] ??
+                'application/octet-stream';
+
+        debugPrint(
+          '[ProxyLocal] '
+              'HTTP ${streamedResponse.statusCode} | '
+              '$contentType | '
+              '${bytes.length} bytes',
+        );
+
+        // =====================================================
+        // NÃO CONVERTE MAIS IMAGEM PARA MP4
+        //
+        // JPG/PNG entra -> JPG/PNG sai
+        // MP4 entra     -> MP4 sai
+        // =====================================================
 
         return shelf.Response(
           streamedResponse.statusCode,
-          body: imageBytes,
-          headers: headers,
+          body: bytes,
+          headers: {
+            'Content-Type': contentType,
+            'Content-Length': bytes.length.toString(),
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-cache',
+          },
         );
       } catch (e) {
+        debugPrint(
+          '[ProxyLocal] Erro no proxy: $e',
+        );
+
+        return shelf.Response.internalServerError(
+          body: e.toString(),
+        );
+      } finally {
         client.close();
-        debugPrint("[ProxyLocal] Erro no proxy: $e");
-        return shelf.Response.internalServerError(body: e.toString());
       }
     });
 
     try {
-      _localProxyServer = await shelf_io.serve(router.call, '0.0.0.0', _localProxyPort);
-      debugPrint('[ProxyLocal] Servidor rodando na rede em http://0.0.0.0:$_localProxyPort');
+      _localProxyServer = await shelf_io.serve(
+        router.call,
+        '0.0.0.0',
+        _localProxyPort,
+      );
+
+      debugPrint(
+        '[ProxyLocal] Servidor rodando em '
+            'http://0.0.0.0:$_localProxyPort',
+      );
     } catch (e) {
-      debugPrint('[ProxyLocal] Erro ao iniciar servidor local: $e');
+      debugPrint(
+        '[ProxyLocal] Erro ao iniciar servidor local: $e',
+      );
     }
   }
+
 
   Future<String> _gerarUrlProxyLocalParaBunny(String urlOriginal) async {
     await _iniciarServidorProxyLocal();
@@ -1353,13 +1333,20 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
     );
   }
 
-  Future<void> _enviarMidiaParaDispositivo(CastDevice device) async {
-    debugPrint("[Cast] Conectando ao device: ${device.name} [IP:${device.address}]");
+  Future<void> _enviarMidiaParaDispositivo(
+      CastDevice device,
+      ) async {
+    debugPrint(
+      '[Cast] Conectando ao device: '
+          '${device.name} [IP:${device.address}]',
+    );
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Conectando a ${device.name}..."),
+          content: Text(
+            'Conectando a ${device.name}...',
+          ),
           backgroundColor: const Color(0xFF198754),
           duration: const Duration(seconds: 2),
         ),
@@ -1367,26 +1354,141 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
     }
 
     try {
-      final session = await _castService.connect(device);
+      // =====================================================
+      // CONECTA AO DISPOSITIVO
+      // =====================================================
 
-      // A URL passa pelo nosso proxy local (garantindo os headers da Bunny CDN)
-      final urlProxyLocal = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
-      debugPrint("[Cast] URL Proxy gerada: $urlProxyLocal");
+      final session =
+      await _castService.connect(device);
 
-      final bool isImage = _currentMediaUrl.toLowerCase().contains('.jpg') ||
-          _currentMediaUrl.toLowerCase().contains('.jpeg') ||
-          _currentMediaUrl.toLowerCase().contains('.png') ||
-          _currentMediaUrl.toLowerCase().contains('.webp');
+      final bool isImage =
+          _currentMediaType == 'image';
 
-      String tituloFinal = _currentMediaTitle.trim();
-      if (tituloFinal.isEmpty || tituloFinal.toLowerCase() == 'plataforma' || tituloFinal.toLowerCase() == 'plataforma conserlar') {
-        tituloFinal = isImage ? 'Esquema Conserlar' : 'Aula Conserlar';
+      debugPrint(
+        '[Cast] Tipo da mídia: '
+            '${isImage ? 'IMAGE' : 'VIDEO'}',
+      );
+
+      debugPrint(
+        '[Cast] URL original: $_currentMediaUrl',
+      );
+
+      // =====================================================
+      // IMAGEM
+      // =====================================================
+
+      if (isImage) {
+        // ---------------------------------------------------
+        // A imagem continua passando pelo nosso proxy local.
+        //
+        // O proxy é quem acessa a Bunny usando:
+        // Referer: https://aluno.conserlar.com
+        // ---------------------------------------------------
+
+        final urlProxyLocal =
+        await _gerarUrlProxyLocalParaBunny(
+          _currentMediaUrl,
+        );
+
+        debugPrint(
+          '[Cast] URL Proxy imagem: '
+              '$urlProxyLocal',
+        );
+
+        final imageResponse = await http.get(
+          Uri.parse(urlProxyLocal),
+        );
+
+        if (imageResponse.statusCode < 200 ||
+            imageResponse.statusCode >= 300) {
+          throw Exception(
+            'Erro ao baixar imagem pelo proxy. '
+                'HTTP ${imageResponse.statusCode}',
+          );
+        }
+
+        final imageBytes =
+        Uint8List.fromList(
+          imageResponse.bodyBytes,
+        );
+
+        if (imageBytes.isEmpty) {
+          throw Exception(
+            'A imagem recebida pelo proxy está vazia.',
+          );
+        }
+
+        debugPrint(
+          '[Cast] Imagem recebida pelo proxy: '
+              '${imageBytes.length} bytes',
+        );
+
+        // ---------------------------------------------------
+        // MediaSource
+        //
+        // NÃO converte JPG/PNG para MP4.
+        // O dart_cast cria uma fonte para servir os bytes.
+        // ---------------------------------------------------
+
+        final mediaSource = MediaSource.bytes(
+          imageBytes,
+          contentType: 'image/jpeg',
+        );
+
+        final media = CastMedia.source(
+          mediaSource,
+          type: CastMediaType.image,
+          fileExtension: '.jpg',
+          title: _currentMediaTitle.trim().isNotEmpty
+              ? _currentMediaTitle.trim()
+              : 'Esquema Conserlar',
+        );
+
+        await session.loadMedia(media);
+
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Imagem enviada para a TV!',
+              ),
+              backgroundColor: Color(0xFF198754),
+            ),
+          );
+        }
+
+        return;
+      }
+
+      // =====================================================
+      // VÍDEO
+      // =====================================================
+
+      final urlProxyLocal =
+      await _gerarUrlProxyLocalParaBunny(
+        _currentMediaUrl,
+      );
+
+      debugPrint(
+        '[Cast] URL Proxy vídeo: '
+            '$urlProxyLocal',
+      );
+
+      String tituloFinal =
+      _currentMediaTitle.trim();
+
+      if (tituloFinal.isEmpty ||
+          tituloFinal.toLowerCase() == 'plataforma' ||
+          tituloFinal.toLowerCase() ==
+              'plataforma conserlar') {
+        tituloFinal = 'Aula Conserlar';
       }
 
       final media = CastMedia(
         url: urlProxyLocal,
         title: tituloFinal,
-        type: CastMediaType.mp4, // O cast service usa mp4 como container de transporte
+        type: CastMediaType.mp4,
       );
 
       await session.loadMedia(media);
@@ -1394,17 +1496,28 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Transmitido para a TV com sucesso!"),
+            content: Text(
+              'Vídeo transmitido para a TV!',
+            ),
             backgroundColor: Color(0xFF198754),
           ),
         );
       }
-    } catch (e) {
-      debugPrint("[Cast Erro]: $e");
+    } catch (e, stack) {
+      debugPrint(
+        '[Cast Erro]: $e',
+      );
+
+      debugPrint(
+        '[Cast Stack]: $stack',
+      );
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Erro na transmissão: $e"),
+            content: Text(
+              'Erro na transmissão: $e',
+            ),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
@@ -1412,6 +1525,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
       }
     }
   }
+
 
   void _toggleFullInterno() {
     setState(() {
