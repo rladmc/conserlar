@@ -1,192 +1,29 @@
-workflows:
-  conserlar-workflow:
-    name: Conserlar Build Pipeline
-    instance_type: mac_mini_m2
+- name: DEBUG iOS deployment target
+  script: |
+    echo "======================================"
+    echo "PROJECT PBXPROJ"
+    echo "======================================"
 
-    environment:
-      flutter: stable
-      xcode: latest
-      cocoapods: default
+    grep -n "IPHONEOS_DEPLOYMENT_TARGET" \
+      ios/Runner.xcodeproj/project.pbxproj || true
 
-    scripts:
+    echo ""
+    echo "======================================"
+    echo "XCCONFIG"
+    echo "======================================"
 
-      # ============================================================
-      # 1. Flutter dependencies
-      # ============================================================
-      - name: Get Flutter packages
-        script: |
-          set -e
-          flutter pub get
+    grep -R "IPHONEOS_DEPLOYMENT_TARGET" ios/Flutter \
+      --include="*.xcconfig" || true
 
+    echo ""
+    echo "======================================"
+    echo "XCODE BUILD SETTINGS - RUNNER"
+    echo "======================================"
 
-      # ============================================================
-      # 2. Force Runner Xcode project to iOS 16
-      # ============================================================
-      - name: Configure Runner for iOS 16
-        script: |
-          set -e
-
-          PROJECT="ios/Runner.xcodeproj/project.pbxproj"
-
-          echo "========================================"
-          echo "ANTES DA ALTERAÇÃO"
-          echo "========================================"
-
-          grep -n "IPHONEOS_DEPLOYMENT_TARGET" "$PROJECT" || true
-
-          echo ""
-          echo "========================================"
-          echo "FORÇANDO iOS 16"
-          echo "========================================"
-
-          # Substitui qualquer deployment target existente
-          sed -i '' \
-            -E 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]+;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g' \
-            "$PROJECT"
-
-          # Caso o projeto não tenha IPHONEOS_DEPLOYMENT_TARGET
-          # em alguma configuração, adiciona através do Ruby/Xcodeproj.
-          ruby <<'RUBY'
-          require 'xcodeproj'
-
-          project_path = 'ios/Runner.xcodeproj'
-          project = Xcodeproj::Project.open(project_path)
-
-          project.targets.each do |target|
-            puts "Target: #{target.name}"
-
-            target.build_configurations.each do |config|
-              puts "  #{config.name}: #{config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']}"
-
-              config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
-            end
-          end
-
-          project.save
-          RUBY
-
-          echo ""
-          echo "========================================"
-          echo "DEPOIS DA ALTERAÇÃO"
-          echo "========================================"
-
-          grep -n "IPHONEOS_DEPLOYMENT_TARGET" "$PROJECT" || true
-
-
-      # ============================================================
-      # 3. Configure Flutter iOS files
-      # ============================================================
-      - name: Configure Flutter iOS files
-        script: |
-          set -e
-
-          # Flutter AppFrameworkInfo
-          if [ -f "ios/Flutter/AppFrameworkInfo.plist" ]; then
-            /usr/libexec/PlistBuddy \
-              -c "Set :MinimumOSVersion 16.0" \
-              ios/Flutter/AppFrameworkInfo.plist \
-              2>/dev/null || \
-            /usr/libexec/PlistBuddy \
-              -c "Add :MinimumOSVersion string 16.0" \
-              ios/Flutter/AppFrameworkInfo.plist
-          fi
-
-          echo "AppFrameworkInfo:"
-          /usr/libexec/PlistBuddy \
-            -c "Print :MinimumOSVersion" \
-            ios/Flutter/AppFrameworkInfo.plist \
-            2>/dev/null || true
-
-
-      # ============================================================
-      # 4. Install CocoaPods
-      # ============================================================
-      - name: Install CocoaPods
-        script: |
-          set -e
-
-          cd ios
-
-          pod install --repo-update
-
-
-      # ============================================================
-      # 5. Force Pods to iOS 16
-      # ============================================================
-      - name: Force Pods deployment target
-        script: |
-          set -e
-
-          find ios -type f \
-            \( -name "*.pbxproj" -o -name "*.xcconfig" \) \
-            -print0 | while IFS= read -r -d '' file; do
-
-              sed -i '' \
-                -E 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]+/IPHONEOS_DEPLOYMENT_TARGET = 16.0/g' \
-                "$file"
-
-          done
-
-
-      # ============================================================
-      # 6. Verify actual Xcode target
-      # ============================================================
-      - name: Verify Xcode deployment target
-        script: |
-          set -e
-
-          echo ""
-          echo "========================================"
-          echo "XCODE VERSION"
-          echo "========================================"
-
-          xcodebuild -version
-
-          echo ""
-          echo "========================================"
-          echo "RUNNER BUILD SETTINGS"
-          echo "========================================"
-
-          xcodebuild \
-            -project ios/Runner.xcodeproj \
-            -target Runner \
-            -configuration Release \
-            -showBuildSettings \
-            | grep -E "IPHONEOS_DEPLOYMENT_TARGET|SDKROOT|PRODUCT_NAME" \
-            || true
-
-          echo ""
-          echo "========================================"
-          echo "PROJECT PBXPROJ"
-          echo "========================================"
-
-          grep -n "IPHONEOS_DEPLOYMENT_TARGET" \
-            ios/Runner.xcodeproj/project.pbxproj \
-            || true
-
-
-      # ============================================================
-      # 7. Build iOS
-      # ============================================================
-      - name: Build iOS App
-        script: |
-          set -e
-
-          flutter build ios \
-            --release \
-            --no-codesign
-
-
-      # ============================================================
-      # 8. Build Android
-      # ============================================================
-      - name: Build Android App
-        script: |
-          set -e
-
-          flutter build apk --release
-
-
-    artifacts:
-      - build/ios/iphoneos/*.app
-      - build/app/outputs/flutter-apk/*.apk
+    xcodebuild \
+      -project ios/Runner.xcodeproj \
+      -target Runner \
+      -configuration Release \
+      -showBuildSettings \
+      | grep -E "IPHONEOS_DEPLOYMENT_TARGET|SDKROOT|PRODUCT_NAME" \
+      || true
