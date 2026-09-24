@@ -1,18 +1,15 @@
-source 'https://github.com/CocoaPods/Specs.git'
-
 platform :ios, '16.0'
+
+# Requer os pods do Flutter gerados automaticamente
+flutter_root = File.expand_path('Flutter', __dir__)
+require File.expand_path('packages/flutter_tools/bin/podhelper', flutter_root) if File.exist?(File.expand_path('packages/flutter_tools/bin/podhelper', flutter_root))
 
 target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
-  # Flutter Pods
-  flutter_application_path = '../'
-  load File.join(flutter_application_path, '.ios', 'Flutter', 'podhelper.rb') if File.exist?(File.join(flutter_application_path, '.ios', 'Flutter', 'podhelper.rb'))
-  # Se o seu projeto usa a estrutura padrão recente do Flutter, use a linha abaixo:
-  # load File.join(flutter_application_path, 'ios', 'Flutter', 'podhelper.rb')
-
-  install_all_flutter_pods(flutter_application_path)
+  # Instala todos os pods necessários pelo Flutter
+  install_all_flutter_pods
 end
 
 post_install do |installer|
