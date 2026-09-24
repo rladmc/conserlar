@@ -14,21 +14,20 @@ workflows:
         script: |
           echo "Forçando versão mínima do iOS para 16.0..."
           
-          # Atualiza diretamente o arquivo project.pbxproj e Podfile usando Python de forma rigorosa
+          # Atualiza diretamente o Podfile e o project.pbxproj usando Python
           python3 -c "
           import os, re
 
-          # 1. Atualiza o Podfile na raiz da pasta ios
+          # 1. Atualiza o Podfile
           podfile_path = 'ios/Podfile'
           if os.path.exists(podfile_path):
               with open(podfile_path, 'r', encoding='utf-8') as f:
                   content = f.read()
-              # Força a plataforma no topo
               content = re.sub(r'platform\s+:ios,\s*[\x27\x27\"\']\d+[\.\d]*[\x27\x27\"\']', 'platform :ios, \x2716.0\x27', content)
               with open(podfile_path, 'w', encoding='utf-8') as f:
                   f.write(content)
 
-          # 2. Varre o pbxproj para garantir que nenhuma conf de deployment target fique em 15.0
+          # 2. Varre o pbxproj para garantir o IPHONEOS_DEPLOYMENT_TARGET como 16.0
           pbxproj_path = 'ios/Runner.xcodeproj/project.pbxproj'
           if os.path.exists(pbxproj_path):
               with open(pbxproj_path, 'r', encoding='utf-8') as f:
@@ -39,7 +38,7 @@ workflows:
           "
       - name: Build iOS App (No Codesign for test)
         script: |
-          flutter build ios --release --no-codesign --ios-language swift
+          flutter build ios --release --no-codesign
       - name: Build Android App (APK)
         script: |
           flutter build apk --release
