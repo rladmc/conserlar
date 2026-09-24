@@ -7,8 +7,9 @@ workflows:
       xcode: latest
       cocoapods: default
     scripts:
-      - name: Get Flutter packages
+      - name: Limpar cache e atualizar dependências
         script: |
+          flutter clean
           flutter pub get
       - name: Build iOS App (No Codesign for test)
         script: |
