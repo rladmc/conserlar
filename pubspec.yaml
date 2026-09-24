@@ -43,7 +43,7 @@ dependencies:
   flutter_chrome_cast: ^1.4.8
   dart_cast: ^0.7.4
   dlna_dart: ^0.0.5       # Para DLNA / UPnP (Smart TVs)
-  flutter_ios_airplay: ^0.0.8
+  #flutter_ios_airplay: ^0.0.8
   bonsoir: ^7.0.0
   shelf: ^1.4.1
   shelf_router: ^1.1.4
