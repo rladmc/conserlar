@@ -31,6 +31,9 @@ jobs:
           find ios -name "*.pbxproj" -o -name "*.xcconfig" | xargs sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g'
           plutil -replace MinimumOSVersion -string "16.0" ios/Runner/Info.plist || true
 
+      - name: Atualizar Configuração do Swift Package Manager do Flutter
+        run: flutter build ios --config-only --no-codesign
+
       - name: Build iOS App (No Codesign)
         run: flutter build ios --release --no-codesign
 
