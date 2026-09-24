@@ -10,38 +10,36 @@ workflows:
       - name: Get Flutter packages
         script: |
           flutter pub get
-      - name: Force iOS 16.0 Globally in iOS Project
+      - name: Force iOS 16.0 Deployment Target
         script: |
-          echo "Varrendo e forçando iOS 16.0 em todos os arquivos de configuração do iOS..."
+          echo "Forçando versão mínima do iOS para 16.0..."
           
-          # Executa um script Python para atualizar QUALQUER arquivo de projeto ou configuração que contenha deployment target antigo
+          # Atualiza diretamente o arquivo project.pbxproj e Podfile usando Python de forma rigorosa
           python3 -c "
           import os, re
 
-          ios_dir = 'ios'
-          for root, dirs, files in os.walk(ios_dir):
-              for file in files:
-                  if file.endswith(('pbxproj', 'plist', 'xcconfig', 'Podfile')):
-                      filepath = os.path.join(root, file)
-                      try:
-                          with open(filepath, 'r', encoding='utf-8') as f:
-                              content = f.read()
-                          
-                          # Substitui qualquer menção a IPHONEOS_DEPLOYMENT_TARGET ou deployment target para 16.0
-                          new_content = re.sub(r'IPHONEOS_DEPLOYMENT_TARGET\s*=\s*\d+\.\d+', 'IPHONEOS_DEPLOYMENT_TARGET = 16.0', content)
-                          new_content = re.sub(r'<key>MinimumOSVersion</key>\s*<string>\d+\.\d+</string>', '<key>MinimumOSVersion</key><string>16.0</string>', new_content)
-                          new_content = re.sub(r'platform\s+:ios,\s*[\x27\x27\"\']\d+\.\d+[\x27\x27\"\']', 'platform :ios, \x2716.0\x27', new_content)
-                          
-                          if new_content != content:
-                              with open(filepath, 'w', encoding='utf-8') as f:
-                                  f.write(new_content)
-                              print(f'Atualizado: {filepath}')
-                      except Exception as e:
-                          print(f'Erro ao processar {filepath}: {e}')
+          # 1. Atualiza o Podfile na raiz da pasta ios
+          podfile_path = 'ios/Podfile'
+          if os.path.exists(podfile_path):
+              with open(podfile_path, 'r', encoding='utf-8') as f:
+                  content = f.read()
+              # Força a plataforma no topo
+              content = re.sub(r'platform\s+:ios,\s*[\x27\x27\"\']\d+[\.\d]*[\x27\x27\"\']', 'platform :ios, \x2716.0\x27', content)
+              with open(podfile_path, 'w', encoding='utf-8') as f:
+                  f.write(content)
+
+          # 2. Varre o pbxproj para garantir que nenhuma conf de deployment target fique em 15.0
+          pbxproj_path = 'ios/Runner.xcodeproj/project.pbxproj'
+          if os.path.exists(pbxproj_path):
+              with open(pbxproj_path, 'r', encoding='utf-8') as f:
+                  content = f.read()
+              content = re.sub(r'IPHONEOS_DEPLOYMENT_TARGET\s*=\s*\d+\.\d+;', 'IPHONEOS_DEPLOYMENT_TARGET = 16.0;', content)
+              with open(pbxproj_path, 'w', encoding='utf-8') as f:
+                  f.write(content)
           "
       - name: Build iOS App (No Codesign for test)
         script: |
-          flutter build ios --release --no-codesign
+          flutter build ios --release --no-codesign --ios-language swift
       - name: Build Android App (APK)
         script: |
           flutter build apk --release
