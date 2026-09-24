@@ -4,26 +4,38 @@
     echo "PROJECT PBXPROJ"
     echo "======================================"
 
-    grep -n "IPHONEOS_DEPLOYMENT_TARGET" \
-      ios/Runner.xcodeproj/project.pbxproj || true
+    if [ -f "ios/Runner.xcodeproj/project.pbxproj" ]; then
+      grep -n "IPHONEOS_DEPLOYMENT_TARGET" \
+        ios/Runner.xcodeproj/project.pbxproj || true
+    else
+      echo "project.pbxproj não encontrado"
+    fi
 
     echo ""
     echo "======================================"
-    echo "XCCONFIG"
+    echo "FLUTTER XCCONFIG"
     echo "======================================"
 
-    grep -R "IPHONEOS_DEPLOYMENT_TARGET" ios/Flutter \
-      --include="*.xcconfig" || true
+    for file in ios/Flutter/*.xcconfig; do
+      if [ -f "$file" ]; then
+        echo "---- $file ----"
+        grep -n "IPHONEOS_DEPLOYMENT_TARGET" "$file" || true
+      fi
+    done
 
     echo ""
     echo "======================================"
-    echo "XCODE BUILD SETTINGS - RUNNER"
+    echo "ALL IOS CONFIGS"
     echo "======================================"
 
-    xcodebuild \
-      -project ios/Runner.xcodeproj \
-      -target Runner \
-      -configuration Release \
-      -showBuildSettings \
-      | grep -E "IPHONEOS_DEPLOYMENT_TARGET|SDKROOT|PRODUCT_NAME" \
-      || true
+    grep -R -n "IPHONEOS_DEPLOYMENT_TARGET" ios \
+      --include="*.pbxproj" \
+      --include="*.xcconfig" \
+      2>/dev/null || true
+
+    echo ""
+    echo "======================================"
+    echo "XCODE VERSION"
+    echo "======================================"
+
+    xcodebuild -version
