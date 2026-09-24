@@ -10,33 +10,35 @@ workflows:
       - name: Get Flutter packages
         script: |
           flutter pub get
-      - name: Force iOS 16.0 Deployment Target in Xcode Project
+      - name: Force iOS 16.0 Globally in iOS Project
         script: |
-          echo "Forçando iOS 16.0 no projeto Xcode e Podfile..."
+          echo "Varrendo e forçando iOS 16.0 em todos os arquivos de configuração do iOS..."
           
-          # 1. Altera todas as ocorrências de deployment target no pbxproj para 16.0
-          PBXPROJ="ios/Runner.xcodeproj/project.pbxproj"
-          if [ -f "$PBXPROJ" ]; then
-            # Substitui qualquer versão antiga (11.0 até 15.6) por 16.0
-            python3 -c "
-            with open('$PBXPROJ', 'r') as f:
-                content = f.read()
-            import re
-            # Substitui IPHONEOS_DEPLOYMENT_TARGET por 16.0
-            content = re.sub(r'IPHONEOS_DEPLOYMENT_TARGET = \d+\.\d+;', 'IPHONEOS_DEPLOYMENT_TARGET = 16.0;', content)
-            with open('$PBXPROJ', 'w') as f:
-                f.write(content)
-            "
-          fi
+          # Executa um script Python para atualizar QUALQUER arquivo de projeto ou configuração que contenha deployment target antigo
+          python3 -c "
+          import os, re
 
-          # 2. Garante o platform :ios, '16.0' no Podfile
-          cd ios
-          if grep -q "platform :ios" Podfile; then
-            sed -i '' "s/platform :ios, '.*'/platform :ios, '16.0'/g" Podfile
-          else
-            sed -i '' "1s/^/platform :ios, '16.0'\n/" Podfile
-          fi
-          cd ..
+          ios_dir = 'ios'
+          for root, dirs, files in os.walk(ios_dir):
+              for file in files:
+                  if file.endswith(('pbxproj', 'plist', 'xcconfig', 'Podfile')):
+                      filepath = os.path.join(root, file)
+                      try:
+                          with open(filepath, 'r', encoding='utf-8') as f:
+                              content = f.read()
+                          
+                          # Substitui qualquer menção a IPHONEOS_DEPLOYMENT_TARGET ou deployment target para 16.0
+                          new_content = re.sub(r'IPHONEOS_DEPLOYMENT_TARGET\s*=\s*\d+\.\d+', 'IPHONEOS_DEPLOYMENT_TARGET = 16.0', content)
+                          new_content = re.sub(r'<key>MinimumOSVersion</key>\s*<string>\d+\.\d+</string>', '<key>MinimumOSVersion</key><string>16.0</string>', new_content)
+                          new_content = re.sub(r'platform\s+:ios,\s*[\x27\x27\"\']\d+\.\d+[\x27\x27\"\']', 'platform :ios, \x2716.0\x27', new_content)
+                          
+                          if new_content != content:
+                              with open(filepath, 'w', encoding='utf-8') as f:
+                                  f.write(new_content)
+                              print(f'Atualizado: {filepath}')
+                      except Exception as e:
+                          print(f'Erro ao processar {filepath}: {e}')
+          "
       - name: Build iOS App (No Codesign for test)
         script: |
           flutter build ios --release --no-codesign
