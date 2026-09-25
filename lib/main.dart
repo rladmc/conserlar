@@ -13,6 +13,9 @@ import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart' as shelf_router; // <--- ADICIONADO "as shelf_router" AQUI
 import 'package:http/http.dart' as http;
+import 'dart:typed_data';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 
 
 void main() async {
@@ -796,13 +799,8 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
   }
 }
 
-// ==========================================
-// TELA DA PLATAFORMA DO ALUNO (COM PROXY LOCAL E BONSOIR iOS)
-// ==========================================
-
 class TelaDeEstudosSegura extends StatefulWidget {
   const TelaDeEstudosSegura({super.key});
-
   @override
   State<TelaDeEstudosSegura> createState() => _TelaDeEstudosSeguraState();
 }
@@ -811,42 +809,24 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   late final WebViewController controller;
   bool _conteudoVisivel = true;
   bool _isFullScreen = false;
-
-  // Dados da mídia atual extraídos do WebView
   String _currentMediaUrl = '';
   String _currentMediaTitle = '';
   String _currentMediaType = 'video';
-
-  // ==========================================
-  // CONFIGURAÇÃO DO SERVIDOR PROXY LOCAL (BUNNY CDN)
-  // ==========================================
   HttpServer? _localProxyServer;
   final int _localProxyPort = 8080;
 
-  // ==========================================
-  // SERVIÇO DE CAST UNIFICADO (ANDROID)
-  // ==========================================
   late final CastService _castService = CastService(
-    discoveryProviders: [
-      ChromecastDiscoveryProvider(),
-      DlnaDiscoveryProvider(),
-    ],
+    discoveryProviders: [ChromecastDiscoveryProvider(), DlnaDiscoveryProvider()],
     sessionFactory: (device) {
       switch (device.protocol) {
         case CastProtocol.chromecast:
           return ChromecastSession(device: device);
         case CastProtocol.dlna:
           final dlnaDescription = DlnaDeviceDescription(
-            friendlyName: device.name,
-            manufacturer: 'Generic DLNA',
-            modelName: 'Smart TV',
-            udn: device.id,
+            friendlyName: device.name, manufacturer: 'Generic DLNA', modelName: 'Smart TV', udn: device.id,
             locationUrl: 'http://${device.address}:${device.port}/description.xml',
           );
-          return DlnaSession(
-            device: device,
-            description: dlnaDescription,
-          );
+          return DlnaSession(device: device, description: dlnaDescription);
         case CastProtocol.airplay:
           return AirPlaySession(device);
         default:
@@ -859,386 +839,182 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _protegerTela();
-
-    // Inicia o servidor proxy local assim que a tela sobe na rede Wi-Fi
     _iniciarServidorProxyLocal();
-
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setUserAgent("iphoneconserlar2026")
-
-    // ==========================================
-    // PONTE DE COMUNICAÇÃO DE CAST / CONTROLE (JS -> FLUTTER)
-    // ==========================================
-      ..addJavaScriptChannel(
-        'AndroidCastBridge',
-        onMessageReceived: (JavaScriptMessage message) {
-          try {
-            final data = jsonDecode(message.message);
-            setState(() {
-              _currentMediaUrl = data['url'] ?? '';
-              _currentMediaTitle = data['titulo'] ?? 'Conserlar Aula';
-              _currentMediaType = data['tipo'] ?? 'video';
-            });
-            final bool dispararMenu = data['abrirMenu'] ?? false;
-
-            debugPrint("Mídia capturada -> URL: $_currentMediaUrl | Tipo:$_currentMediaType");
-
-            if (dispararMenu && _currentMediaUrl.isNotEmpty) {
-              _mostrarMenuDispositivosTransmissao();
-            }
-          } catch (e) {
-            if (message.message.contains("pararTransmissao")) {
-              _pararTransmissaoNaTv();
-            }
+      ..setUserAgent('iphoneconserlar2026')
+      ..addJavaScriptChannel('AndroidCastBridge', onMessageReceived: (JavaScriptMessage message) {
+        try {
+          final data = jsonDecode(message.message);
+          if (!mounted) return;
+          setState(() {
+            _currentMediaUrl = data['url'] ?? '';
+            _currentMediaTitle = data['titulo'] ?? 'Conserlar Aula';
+            _currentMediaType = data['tipo'] ?? 'video';
+          });
+          if ((data['abrirMenu'] ?? false) && _currentMediaUrl.isNotEmpty) {
+            _mostrarMenuDispositivosTransmissao();
           }
+        } catch (e) {
+          if (message.message.contains('pararTransmissao')) _pararTransmissaoNaTv();
+        }
+      })
+      ..setNavigationDelegate(NavigationDelegate(
+        onNavigationRequest: (NavigationRequest request) {
+          if (request.url.contains('app://full_clicked')) {
+            _toggleFullInterno();
+            return NavigationDecision.prevent;
+          }
+          if (request.url.contains('app://airplay_clicked')) {
+            _acionarAirPlayNativo();
+            return NavigationDecision.prevent;
+          }
+          if (request.url.contains('app://cast_clicked')) {
+            if (_currentMediaUrl.isNotEmpty) {
+              _mostrarMenuDispositivosTransmissao();
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aguarde a mídia carregar na tela...')));
+            }
+            return NavigationDecision.prevent;
+          }
+          return NavigationDecision.navigate;
         },
-      )
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onNavigationRequest: (NavigationRequest request) {
-            String url = request.url;
+        onPageFinished: (String url) {
+          controller.runJavaScript('''
+            (function() {
+              var style = document.createElement('style');
+              style.innerHTML = `body { background-color: #121212 !important; color: #E0E0E0 !important; } button[onclick*="alternarAba"] { display: none !important; }`;
+              document.head.appendChild(style);
 
-            if (url.contains("app://full_clicked")) {
-              _toggleFullInterno();
-              return NavigationDecision.prevent;
-            }
-
-            if (url.contains("app://airplay_clicked")) {
-              debugPrint("AirPlay acionado pelo site");
-              _acionarAirPlayNativo();
-              return NavigationDecision.prevent;
-            }
-
-            if (url.contains("app://cast_clicked")) {
-              debugPrint("Cast acionado pelo site");
-              if (_currentMediaUrl.isNotEmpty) {
-                _mostrarMenuDispositivosTransmissao();
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Aguarde a mídia carregar na tela...")),
-                );
-              }
-              return NavigationDecision.prevent;
-            }
-
-            return NavigationDecision.navigate;
-          },
-          onPageFinished: (String url) {
-            final bool isIosDevice = Platform.isIOS;
-
-            controller.runJavaScript(
-              '''
-              (function() {
-                var style = document.createElement('style');
-                style.innerHTML = `
-                    body {
-                        -webkit-tap-highlight-color: transparent;
-                        -webkit-touch-callout: none;
-                        overscroll-behavior-y: contain;
-                        background-color: #121212 !important;
-                        color: #E0E0E0 !important;
-                    }
-                    button[onclick*="alternarAba"] {
-                        display: none !important;
-                    }
-                    button, .btn {
-                        border-radius: 8px !important;
-                        cursor: pointer;
-                    }
-                    video, iframe {
-                        max-width: 100% !important;
-                        border-radius: 8px;
-                    }
-                    
-                    .app-injected-btn {
-                      display: inline-flex;
-                      align-items: center;
-                      gap: 5px;
-                      margin-left: 6px;
-                      padding: 6px 12px;
-                      background-color: #212529;
-                      color: #fff;
-                      border: 1px solid #198754;
-                      border-radius: 4px;
-                      font-size: 14px;
-                      cursor: pointer;
-                      vertical-align: middle;
-                      z-index: 99999;
-                    }
-                    .app-injected-btn:hover {
-                      background-color: #198754;
-                    }
-                    
-                    #containerTabelaErros .table {
-                        font-size: 11px !important;
-                    }
-                    #containerTabelaErros th, 
-                    #containerTabelaErros td {
-                        padding: 4px 6px !important;
-                        word-break: break-word;
-                    }
-
-                    #menuNavegacaoSuperior {
-                        display: flex !important;
-                        flex-wrap: nowrap !important;
-                        overflow-x: auto !important;
-                        overflow-y: hidden !important;
-                        justify-content: flex-start !important;
-                        white-space: nowrap !important;
-                        padding-bottom: 10px !important;
-                        -webkit-overflow-scrolling: touch;
-                        scrollbar-width: none;
-                    }
-                    #menuNavegacaoSuperior::-webkit-scrollbar {
-                        display: none; 
-                    }
-                    #menuNavegacaoSuperior .nav-item {
-                        flex: 0 0 auto !important;
-                        margin-right: 8px !important;
-                    }
-                    #menuNavegacaoSuperior .nav-link {
-                        background-color: #1E1E1E !important;
-                        border: 1px solid #333 !important;
-                        border-radius: 20px !important;
-                        padding: 8px 16px !important;
-                        font-size: 13px !important;
-                        transition: all 0.2s ease;
-                    }
-                    #menuNavegacaoSuperior .nav-link.active {
-                        background-color: #00E676 !important;
-                        color: #000 !important;
-                        border-color: #00E676 !important;
-                        font-weight: bold;
-                    }
-                `;
-                document.head.appendChild(style);      
-
-                var checkBtnCastName = setInterval(function() {
-                    var btnCastSite = document.getElementById('btnCast');
-                    if (btnCastSite && !btnCastSite.dataset.configurado) {
-                        btnCastSite.dataset.configurado = "true";
-                        btnCastSite.innerText = "Transmitir";
-                        btnCastSite.style.cursor = "pointer";
-                        
-                        btnCastSite.onclick = function(e) {
-                            e.preventDefault();
-                            var info = getMidiaInfo();
-                            info.abrirMenu = true;
-                            if (window.AndroidCastBridge) {
-                                window.AndroidCastBridge.postMessage(JSON.stringify(info));
-                            }
-                        };                    
-                        clearInterval(checkBtnCastName);
-                    }
-                }, 500);
-                
-                var checkBtnFullName = setInterval(function() {
-                    var btnFullSite = document.getElementById('btnFull');
-                    if (btnFullSite && !btnFullSite.dataset.configurado) {
-                        btnFullSite.dataset.configurado = "true";
-                        btnFullSite.innerText = "Full";
-                        btnFullSite.id = "btnFullInjetado";
-                        btnFullSite.style.cursor = "pointer";
-                        
-                        btnFullSite.onclick = function(e) {
-                            e.preventDefault();
-                            window.location.href = "app://full_clicked";
-                        };
-                        clearInterval(checkBtnFullName);
-                    }
-                }, 500);
-
-                document.addEventListener('contextmenu', function(e) {
-                    if (e.target.tagName === 'VIDEO' || e.target.tagName === 'IMG' || e.target.tagName === 'IFRAME') {
-                        e.preventDefault();
-                    }
-                });
-
-                function getMidiaInfo() {
-                    var mediaViewer = document.getElementById('mediaViewer');
-                    if (mediaViewer && mediaViewer.src && !mediaViewer.classList.contains('d-none') && mediaViewer.src !== window.location.href && mediaViewer.src !== "") {
-                        var srcUrl = mediaViewer.src;
-                        if (srcUrl.includes('mediadelivery.net')) {
-                            var partes = srcUrl.split('/');
-                            var videoId = partes[partes.length - 1].split('?')[0];
-                            if (videoId && videoId.length > 10) {
-                                var urlDiretaVideo = "https://vz-84a4a5f4-d42.b-cdn.net/" + videoId + "/play_360p.mp4";
-                                return { url: urlDiretaVideo, titulo: document.title || 'Aula Conserlar', tipo: 'video', abrirMenu: false };
-                            }
-                        }
-                        return { url: srcUrl, titulo: document.title || 'Aula Conserlar', tipo: 'video', abrirMenu: false };
-                    }
-
-                    var imgApostila = document.getElementById('imagemApostila');
-                    if (imgApostila) {
-                        var iUrl = imgApostila.src || imgApostila.getAttribute('data-src') || '';
-                        if (iUrl && !imgApostila.classList.contains('d-none')) {
-                            return { url: iUrl, titulo: document.title || 'Esquema Conserlar', tipo: 'image', abrirMenu: false };
-                        }
-                    }
-                    return { url: '', titulo: '', tipo: 'video', abrirMenu: false };
-                }
-
-                setInterval(function() {
+              var checkBtnCastName = setInterval(function() {
+                var btnCastSite = document.getElementById('btnCast');
+                if (btnCastSite && !btnCastSite.dataset.configurado) {
+                  btnCastSite.dataset.configurado = "true";
+                  btnCastSite.innerText = "Transmitir";
+                  btnCastSite.onclick = function(e) {
+                    e.preventDefault();
                     var info = getMidiaInfo();
-                    if (info.url && window.AndroidCastBridge) {
-                        window.AndroidCastBridge.postMessage(JSON.stringify(info));
+                    info.abrirMenu = true;
+                    if (window.AndroidCastBridge) window.AndroidCastBridge.postMessage(JSON.stringify(info));
+                  };
+                  clearInterval(checkBtnCastName);
+                }
+              }, 500);
+
+              var checkBtnFullName = setInterval(function() {
+                var btnFullSite = document.getElementById('btnFull');
+                if (btnFullSite && !btnFullSite.dataset.configurado) {
+                  btnFullSite.dataset.configurado = "true";
+                  btnFullSite.innerText = "Full";
+                  btnFullSite.id = "btnFullInjetado";
+                  btnFullSite.onclick = function(e) {
+                    e.preventDefault();
+                    window.location.href = "app://full_clicked";
+                  };
+                  clearInterval(checkBtnFullName);
+                }
+              }, 500);
+
+              function getMidiaInfo() {
+                var mediaViewer = document.getElementById('mediaViewer');
+                if (mediaViewer && mediaViewer.src && !mediaViewer.classList.contains('d-none') && mediaViewer.src !== window.location.href && mediaViewer.src !== "") {
+                  var srcUrl = mediaViewer.src;
+                  if (srcUrl.includes('mediadelivery.net')) {
+                    var partes = srcUrl.split('/');
+                    var videoId = partes[partes.length - 1].split('?')[0];
+                    if (videoId && videoId.length > 10) {
+                      return { url: "https://vz-84a4a5f4-d42.b-cdn.net/" + videoId + "/play_360p.mp4", titulo: document.title || 'Aula Conserlar', tipo: 'video', abrirMenu: false };
                     }
-                }, 2000);
-              })();
-              ''',
-            );
-          },
-        ),
-      )
+                  }
+                  return { url: srcUrl, titulo: document.title || 'Aula Conserlar', tipo: 'video', abrirMenu: false };
+                }
+                var imgApostila = document.getElementById('imagemApostila');
+                if (imgApostila && !imgApostila.classList.contains('d-none')) {
+                  var iUrl = imgApostila.src || imgApostila.getAttribute('data-src') || '';
+                  if (iUrl) return { url: iUrl, titulo: document.title || 'Esquema Conserlar', tipo: 'image', abrirMenu: false };
+                }
+                return { url: '', titulo: '', tipo: 'video', abrirMenu: false };
+              }
+
+              setInterval(function() {
+                var info = getMidiaInfo();
+                if (info.url && window.AndroidCastBridge) window.AndroidCastBridge.postMessage(JSON.stringify(info));
+              }, 2000);
+            })();
+          ''');
+        },
+      ))
       ..loadRequest(Uri.parse('https://aluno.conserlar.com'));
   }
 
-  // ==========================================
-  // SERVIDOR PROXY LOCAL (BUNNY CDN)
-  // ==========================================
   Future<void> _iniciarServidorProxyLocal() async {
     if (_localProxyServer != null) return;
-
     final router = shelf_router.Router();
-
     router.get('/proxy', (shelf.Request request) async {
-      final targetUrlStr =
-      request.requestedUri.queryParameters['url'];
-
-      if (targetUrlStr == null || targetUrlStr.isEmpty) {
-        return shelf.Response.badRequest(
-          body: 'URL não informada',
-        );
-      }
-
+      final targetUrlStr = request.requestedUri.queryParameters['url'];
+      if (targetUrlStr == null || targetUrlStr.isEmpty) return shelf.Response.badRequest(body: 'URL não informada');
       final client = http.Client();
-
       try {
-        final targetUri = Uri.parse(targetUrlStr);
-
-        final proxyReq = http.Request(
-          'GET',
-          targetUri,
-        );
-
-        // =====================================================
-        // HEADERS EXIGIDOS PELA BUNNY CDN
-        // =====================================================
-
-        proxyReq.headers['Referer'] =
-        'https://aluno.conserlar.com';
-
-        proxyReq.headers['User-Agent'] =
-        'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) '
-            'AppleWebKit/605.1.15 '
-            'Version/16.0 Mobile/15E148 Safari/604.1';
-
-        final streamedResponse =
-        await client.send(proxyReq);
-
-        final bytes =
-        await streamedResponse.stream.toBytes();
-
-        final contentType =
-            streamedResponse.headers['content-type'] ??
-                'application/octet-stream';
-
-        debugPrint(
-          '[ProxyLocal] '
-              'HTTP ${streamedResponse.statusCode} | '
-              '$contentType | '
-              '${bytes.length} bytes',
-        );
-
-        // =====================================================
-        // NÃO CONVERTE MAIS IMAGEM PARA MP4
-        //
-        // JPG/PNG entra -> JPG/PNG sai
-        // MP4 entra     -> MP4 sai
-        // =====================================================
-
-        return shelf.Response(
-          streamedResponse.statusCode,
-          body: bytes,
-          headers: {
-            'Content-Type': contentType,
-            'Content-Length': bytes.length.toString(),
-            'Access-Control-Allow-Origin': '*',
-            'Cache-Control': 'no-cache',
-          },
-        );
+        final proxyReq = http.Request('GET', Uri.parse(targetUrlStr));
+        proxyReq.headers['Referer'] = 'https://aluno.conserlar.com';
+        proxyReq.headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1';
+        final streamedResponse = await client.send(proxyReq);
+        final bytes = await streamedResponse.stream.toBytes();
+        final contentType = streamedResponse.headers['content-type'] ?? 'application/octet-stream';
+        return shelf.Response(streamedResponse.statusCode, body: bytes, headers: {'Content-Type': contentType, 'Content-Length': bytes.length.toString(), 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-cache'});
       } catch (e) {
-        debugPrint(
-          '[ProxyLocal] Erro no proxy: $e',
-        );
-
-        return shelf.Response.internalServerError(
-          body: e.toString(),
-        );
+        return shelf.Response.internalServerError(body: e.toString());
       } finally {
         client.close();
       }
     });
-
     try {
-      _localProxyServer = await shelf_io.serve(
-        router.call,
-        '0.0.0.0',
-        _localProxyPort,
-      );
-
-      debugPrint(
-        '[ProxyLocal] Servidor rodando em '
-            'http://0.0.0.0:$_localProxyPort',
-      );
-    } catch (e) {
-      debugPrint(
-        '[ProxyLocal] Erro ao iniciar servidor local: $e',
-      );
-    }
+      _localProxyServer = await shelf_io.serve(router.call, '0.0.0.0', _localProxyPort);
+    } catch (_) {}
   }
-
 
   Future<String> _gerarUrlProxyLocalParaBunny(String urlOriginal) async {
     await _iniciarServidorProxyLocal();
-
     String localIp = '127.0.0.1';
     try {
-      for (var interface in await NetworkInterface.list()) {
-        for (var addr in interface.addresses) {
+      for (final interface in await NetworkInterface.list()) {
+        for (final addr in interface.addresses) {
           if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
             localIp = addr.address;
             break;
           }
         }
+        if (localIp != '127.0.0.1') break;
       }
     } catch (_) {}
-
-    final encodedUrl = Uri.encodeComponent(urlOriginal);
-    return 'http://$localIp:$_localProxyPort/proxy?url=$encodedUrl';
+    return 'http://$localIp:$_localProxyPort/proxy?url=${Uri.encodeComponent(urlOriginal)}';
   }
 
-  // ==========================================
-  // MENU DE TRANSMISSÃO MULTIPLATAFORMA
-  // ==========================================
+  Future<Uint8List> _converterImagemParaMp4(Uint8List imageBytes) async {
+    Directory? tempDir;
+    try {
+      tempDir = await Directory.systemTemp.createTemp('conserlar_cast_');
+      final inputFile = File('${tempDir.path}/imagem.jpg');
+      final outputFile = File('${tempDir.path}/imagem.mp4');
+      await inputFile.writeAsBytes(imageBytes, flush: true);
+      final command = '-y -loop 1 -i "${inputFile.path}" -t 2 -r 25 -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -c:v libx264 -preset ultrafast -tune stillimage -pix_fmt yuv420p -movflags +faststart "${outputFile.path}"';
+      final session = await FFmpegKit.execute(command);
+      if (!ReturnCode.isSuccess(await session.getReturnCode())) throw Exception('FFmpeg falhou');
+      return await outputFile.readAsBytes();
+    } finally {
+      if (tempDir != null) await tempDir.delete(recursive: true).catchError((_) {});
+    }
+  }
+
   void _mostrarMenuDispositivosTransmissao() {
     if (_currentMediaUrl.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Nenhuma mídia carregada para transmitir!"), backgroundColor: Colors.red),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhuma mídia carregada!'), backgroundColor: Colors.red));
       return;
     }
-
     showModalBottomSheet(
       context: context,
-      isDismissible: true,
       backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (context) {
         return Container(
           padding: const EdgeInsets.all(20),
@@ -1249,47 +1025,22 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    "Transmitir Mídia na Rede",
-                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.grey),
-                    onPressed: () => Navigator.pop(context),
-                  ),
+                  const Text('Transmitir Mídia na Rede', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  IconButton(icon: const Icon(Icons.close, color: Colors.grey), onPressed: () => Navigator.pop(context)),
                 ],
               ),
-              const Text(
-                "Selecione um aparelho compatível abaixo:",
-                style: TextStyle(color: Colors.grey, fontSize: 12),
-              ),
+              const Text('Selecione um aparelho:', style: TextStyle(color: Colors.grey, fontSize: 12)),
               const Divider(color: Colors.grey),
               Expanded(
                 child: Platform.isIOS
-                    ? _BonsoirDeviceListWidget(
-                  onDeviceSelected: (device) async {
-                    Navigator.pop(context);
-                    await _enviarMidiaParaDispositivo(device);
-                  },
-                )
+                    ? _BonsoirDeviceListWidget(onDeviceSelected: (device) async { Navigator.pop(context); await _enviarMidiaParaDispositivo(device); })
                     : StreamBuilder<List<CastDevice>>(
                   stream: _castService.startDiscovery(),
                   builder: (context, snapshot) {
                     if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            CircularProgressIndicator(color: Color(0xFF00E676)),
-                            SizedBox(height: 12),
-                            Text("Procurando Chromecasts e TVs...", style: TextStyle(color: Colors.grey, fontSize: 13)),
-                          ],
-                        ),
-                      );
+                      return const Center(child: CircularProgressIndicator(color: Color(0xFF00E676)));
                     }
-
                     final devices = snapshot.data!;
-
                     return ListView.builder(
                       itemCount: devices.length,
                       itemBuilder: (context, index) {
@@ -1297,12 +1048,9 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
                         return ListTile(
                           leading: const Icon(Icons.cast, color: Color(0xFF00E676)),
                           title: Text(device.name, style: const TextStyle(color: Colors.white)),
-                          subtitle: Text("Protocolo: ${device.protocol.name.toUpperCase()}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                          subtitle: Text('Protocolo: ${device.protocol.name.toUpperCase()}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
                           trailing: const Icon(Icons.cast_connected, color: Colors.white70),
-                          onTap: () async {
-                            Navigator.pop(context);
-                            await _enviarMidiaParaDispositivo(device);
-                          },
+                          onTap: () async { Navigator.pop(context); await _enviarMidiaParaDispositivo(device); },
                         );
                       },
                     );
@@ -1313,17 +1061,10 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
                 Padding(
                   padding: const EdgeInsets.only(top: 8.0),
                   child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Color(0xFF198754)),
-                      minimumSize: const Size(double.infinity, 40),
-                    ),
+                    style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Color(0xFF198754)), minimumSize: const Size(double.infinity, 40)),
                     icon: const Icon(Icons.airplay, color: Color(0xFF00E676)),
-                    label: const Text("Usar AirPlay Nativo (Apple TV)"),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _acionarAirPlayNativo();
-                    },
+                    label: const Text('Usar AirPlay Nativo (Apple TV)'),
+                    onPressed: () { Navigator.pop(context); _acionarAirPlayNativo(); },
                   ),
                 ),
             ],
@@ -1333,352 +1074,68 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
     );
   }
 
-  Future<void> _enviarMidiaParaDispositivo(
-      CastDevice device,
-      ) async {
-    debugPrint(
-      '[Cast] Conectando ao device: '
-          '${device.name} [IP:${device.address}]',
-    );
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Conectando a ${device.name}...',
-          ),
-          backgroundColor: const Color(0xFF198754),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-
+  Future<void> _enviarMidiaParaDispositivo(CastDevice device) async {
     try {
-      // =====================================================
-      // CONECTA AO DISPOSITIVO
-      // =====================================================
-
-      final session =
-      await _castService.connect(device);
-
-      final bool isImage =
-          _currentMediaType == 'image';
-
-      debugPrint(
-        '[Cast] Tipo da mídia: '
-            '${isImage ? 'IMAGE' : 'VIDEO'}',
-      );
-
-      debugPrint(
-        '[Cast] URL original: $_currentMediaUrl',
-      );
-
-      // =====================================================
-      // IMAGEM
-      // =====================================================
-
+      final session = await _castService.connect(device);
+      final bool isImage = _currentMediaType == 'image';
       if (isImage) {
-        // ---------------------------------------------------
-        // A imagem continua passando pelo nosso proxy local.
-        //
-        // O proxy é quem acessa a Bunny usando:
-        // Referer: https://aluno.conserlar.com
-        // ---------------------------------------------------
-
-        final urlProxyLocal =
-        await _gerarUrlProxyLocalParaBunny(
-          _currentMediaUrl,
-        );
-
-        debugPrint(
-          '[Cast] URL Proxy imagem: '
-              '$urlProxyLocal',
-        );
-
-        final imageResponse = await http.get(
-          Uri.parse(urlProxyLocal),
-        );
-
-        if (imageResponse.statusCode < 200 ||
-            imageResponse.statusCode >= 300) {
-          throw Exception(
-            'Erro ao baixar imagem pelo proxy. '
-                'HTTP ${imageResponse.statusCode}',
-          );
-        }
-
-        final imageBytes =
-        Uint8List.fromList(
-          imageResponse.bodyBytes,
-        );
-
-        if (imageBytes.isEmpty) {
-          throw Exception(
-            'A imagem recebida pelo proxy está vazia.',
-          );
-        }
-
-        debugPrint(
-          '[Cast] Imagem recebida pelo proxy: '
-              '${imageBytes.length} bytes',
-        );
-
-        // ---------------------------------------------------
-        // MediaSource
-        //
-        // NÃO converte JPG/PNG para MP4.
-        // O dart_cast cria uma fonte para servir os bytes.
-        // ---------------------------------------------------
-
-        final mediaSource = MediaSource.bytes(
-          imageBytes,
-          contentType: 'image/jpeg',
-        );
-
-        final media = CastMedia.source(
-          mediaSource,
-          type: CastMediaType.image,
-          fileExtension: '.jpg',
-          title: _currentMediaTitle.trim().isNotEmpty
-              ? _currentMediaTitle.trim()
-              : 'Esquema Conserlar',
-        );
-
-        await session.loadMedia(media);
-
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Imagem enviada para a TV!',
-              ),
-              backgroundColor: Color(0xFF198754),
-            ),
-          );
-        }
-
+        final imageProxyUrl = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
+        final imageResponse = await http.get(Uri.parse(imageProxyUrl));
+        final mp4Bytes = await _converterImagemParaMp4(imageResponse.bodyBytes);
+        final mediaSource = MediaSource.bytes(mp4Bytes, contentType: 'video/mp4');
+        final imageMedia = CastMedia.source(mediaSource, type: CastMediaType.mp4, fileExtension: '.mp4', title: _currentMediaTitle.trim().isNotEmpty ? _currentMediaTitle.trim() : 'Esquema Conserlar');
+        await session.loadMedia(imageMedia);
+        try {
+          await session.stateStream.firstWhere((state) => state == SessionState.playing).timeout(const Duration(seconds: 5));
+          await session.pause();
+        } catch (_) {}
         return;
       }
-
-      // =====================================================
-      // VÍDEO
-      // =====================================================
-
-      final urlProxyLocal =
-      await _gerarUrlProxyLocalParaBunny(
-        _currentMediaUrl,
-      );
-
-      debugPrint(
-        '[Cast] URL Proxy vídeo: '
-            '$urlProxyLocal',
-      );
-
-      String tituloFinal =
-      _currentMediaTitle.trim();
-
-      if (tituloFinal.isEmpty ||
-          tituloFinal.toLowerCase() == 'plataforma' ||
-          tituloFinal.toLowerCase() ==
-              'plataforma conserlar') {
-        tituloFinal = 'Aula Conserlar';
-      }
-
-      final media = CastMedia(
-        url: urlProxyLocal,
-        title: tituloFinal,
-        type: CastMediaType.mp4,
-      );
-
-      await session.loadMedia(media);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Vídeo transmitido para a TV!',
-            ),
-            backgroundColor: Color(0xFF198754),
-          ),
-        );
-      }
-    } catch (e, stack) {
-      debugPrint(
-        '[Cast Erro]: $e',
-      );
-
-      debugPrint(
-        '[Cast Stack]: $stack',
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Erro na transmissão: $e',
-            ),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
+      final videoProxyUrl = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
+      final videoMedia = CastMedia(url: videoProxyUrl, title: _currentMediaTitle.trim().isNotEmpty ? _currentMediaTitle.trim() : 'Aula Conserlar', type: CastMediaType.mp4);
+      await session.loadMedia(videoMedia);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro na transmissão: $e'), backgroundColor: Colors.red));
     }
   }
 
-
   void _toggleFullInterno() {
-    setState(() {
-      _isFullScreen = !_isFullScreen;
-    });
-
+    setState(() => _isFullScreen = !_isFullScreen);
     if (_isFullScreen) {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
+      SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-
-      controller.runJavaScript('''
-        (function() {
-          const wrapper = document.getElementById('playerWrapper');
-          if (wrapper) {
-            wrapper.classList.add('player-fullscreen-fix');
-            wrapper.style.setProperty('position', 'fixed', 'important');
-            wrapper.style.setProperty('top', '0', 'important');
-            wrapper.style.setProperty('left', '0', 'important');
-            wrapper.style.setProperty('width', '100vw', 'important');
-            wrapper.style.setProperty('height', '100vh', 'important');
-            wrapper.style.setProperty('z-index', '999999', 'important');
-          }
-
-          const mediaViewer = document.getElementById('mediaViewer');
-          if (mediaViewer) {
-            mediaViewer.style.setProperty('width', '100%', 'important');
-            mediaViewer.style.setProperty('height', '100%', 'important');
-          }
-
-          const btnExit = document.getElementById('btnExitFullscreen');
-          if (btnExit) {
-            btnExit.classList.remove('d-none');
-            btnExit.style.setProperty('z-index', '10000000', 'important');
-            btnExit.style.setProperty('position', 'fixed', 'important');
-            btnExit.style.setProperty('top', '15px', 'important');
-            btnExit.style.setProperty('right', '15px', 'important');
-            
-            btnExit.onclick = function(e) {
-              e.preventDefault();
-              window.location.href = "app://full_clicked";
-            };
-          }
-
-          const btnFull = document.getElementById('btnFullInjetado');
-          if (btnFull) { btnFull.innerHTML = "Sair Full"; }
-        })();
-      ''');
+      controller.runJavaScript('const wrapper = document.getElementById("playerWrapper"); if(wrapper) { wrapper.style.setProperty("position", "fixed", "important"); wrapper.style.setProperty("top", "0", "important"); wrapper.style.setProperty("left", "0", "important"); wrapper.style.setProperty("width", "100vw", "important"); wrapper.style.setProperty("height", "100vh", "important"); wrapper.style.setProperty("z-index", "999999", "important"); }');
     } else {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.portraitDown,
-      ]);
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-
-      controller.runJavaScript('''
-        (function() {
-          const wrapper = document.getElementById('playerWrapper');
-          if (wrapper) {
-            wrapper.classList.remove('player-fullscreen-fix');
-            wrapper.style.removeProperty('position');
-            wrapper.style.removeProperty('top');
-            wrapper.style.removeProperty('left');
-            wrapper.style.removeProperty('width');
-            wrapper.style.removeProperty('height');
-            wrapper.style.removeProperty('z-index');
-          }
-
-          const mediaViewer = document.getElementById('mediaViewer');
-          if (mediaViewer) {
-            mediaViewer.style.removeProperty('width');
-            mediaViewer.style.removeProperty('height');
-          }
-
-          const btnExit = document.getElementById('btnExitFullscreen');
-          if (btnExit) {
-            btnExit.classList.add('d-none');
-          }
-
-          const btnFull = document.getElementById('btnFullInjetado');
-          if (btnFull) { btnFull.innerHTML = "Full"; }
-        })();
-      ''');
+      controller.runJavaScript('const wrapper = document.getElementById("playerWrapper"); if(wrapper) wrapper.style.cssText = "";');
     }
   }
 
   void _acionarAirPlayNativo() async {
-    if (_currentMediaUrl.isNotEmpty) {
-      try {
-        final urlProxyLocal = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
-        debugPrint("[AirPlay] URL Proxy gerada: $urlProxyLocal");
-
-        await FlutterIosAirplay.url(url: urlProxyLocal);
-      } catch (e) {
-        debugPrint("Erro no AirPlay: $e");
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Erro ao iniciar AirPlay: $e"), backgroundColor: Colors.red),
-          );
-        }
-      }
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Nenhuma mídia selecionada para o AirPlay.")),
-      );
+    if (_currentMediaUrl.isEmpty) return;
+    try {
+      final urlProxyLocal = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
+      await FlutterIosAirplay.url(url: urlProxyLocal);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao iniciar AirPlay: $e'), backgroundColor: Colors.red));
     }
   }
 
   void _pararTransmissaoNaTv() async {
-    try {
-      await _castService.activeSession?.disconnect();
-    } catch (_) {}
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Transmissão encerrada."), backgroundColor: Colors.red),
-      );
-    }
-  }
-
-  void _protegerTela() async {
-    try {
-      // await ScreenProtector.preventScreenshotOn();
-    } catch (e) {
-      debugPrint("Error: $e");
-    }
+    try { await _castService.activeSession?.disconnect(); } catch (_) {}
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      setState(() {
-        _conteudoVisivel = false;
-      });
-    } else if (state == AppLifecycleState.resumed) {
-      setState(() {
-        _conteudoVisivel = true;
-      });
-    }
+    setState(() { _conteudoVisivel = (state == AppLifecycleState.resumed); });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _localProxyServer?.close(force: true);
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
@@ -1690,22 +1147,8 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
       body: SafeArea(
         child: Stack(
           children: [
-            if (_conteudoVisivel)
-              WebViewWidget(controller: controller)
-            else
-              Container(
-                color: Colors.black,
-                child: const Center(
-                  child: Text(
-                    "CONTEÚDO PROTEGIDO",
-                    style: TextStyle(
-                      color: Color(0xFF7F8C8D),
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
+            if (_conteudoVisivel) WebViewWidget(controller: controller)
+            else Container(color: Colors.black, child: const Center(child: Text('CONTEÚDO PROTEGIDO', style: TextStyle(color: Color(0xFF7F8C8D), fontSize: 14, fontWeight: FontWeight.bold))))
           ],
         ),
       ),
@@ -1713,13 +1156,9 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   }
 }
 
-// ==========================================
-// WIDGET DE BUSCA EXCLUSIVO PARA CHROMECAST (BONSOIR + IPv4 LIMPO)
-// ==========================================
 class _BonsoirDeviceListWidget extends StatefulWidget {
   final Function(CastDevice) onDeviceSelected;
   const _BonsoirDeviceListWidget({required this.onDeviceSelected});
-
   @override
   State<_BonsoirDeviceListWidget> createState() => _BonsoirDeviceListWidgetState();
 }
@@ -1738,54 +1177,26 @@ class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
   void _startChromecastDiscovery() async {
     _chromecastDiscovery = BonsoirDiscovery(type: '_googlecast._tcp');
     await _chromecastDiscovery!.initialize();
-
     _chromecastDiscovery!.eventStream!.listen((event) {
       if (event is BonsoirDiscoveryServiceFoundEvent) {
         event.service?.resolve(_chromecastDiscovery!.serviceResolver);
       } else if (event is BonsoirDiscoveryServiceResolvedEvent) {
         final resolvedService = event.service;
-        if (resolvedService != null) {
-          final List<String>? addresses = resolvedService.hostAddresses;
-
-          if (addresses != null && addresses.isNotEmpty) {
-            // Filtra estritamente para pegar apenas IPv4 (evita o IP IPv6 gigantesco)
-            String? ipv4Address;
-            for (var addr in addresses) {
-              if (!addr.contains(':') && addr.split('.').length == 4) {
-                ipv4Address = addr;
-                break;
-              }
-            }
-
-            if (ipv4Address != null) {
-              String deviceName = resolvedService.name;
-              if (deviceName.contains('.')) {
-                deviceName = deviceName.split('.').first;
-              }
-
-              final device = CastDevice(
-                id: resolvedService.name,
-                name: deviceName,
-                address: InternetAddress(ipv4Address), // IP limpo em IPv4
-                port: resolvedService.port,
-                protocol: CastProtocol.chromecast,
-              );
-
-              // Evita duplicatas
-              if (!_foundDevices.any((d) => d.address.address == device.address.address)) {
-                if (mounted) {
-                  setState(() {
-                    _foundDevices.add(device);
-                    _isSearching = false;
-                  });
-                }
-              }
+        if (resolvedService != null && resolvedService.hostAddresses != null) {
+          String? ipv4Address;
+          for (var addr in resolvedService.hostAddresses!) {
+            if (!addr.contains(':') && addr.split('.').length == 4) { ipv4Address = addr; break; }
+          }
+          if (ipv4Address != null) {
+            String deviceName = resolvedService.name.contains('.') ? resolvedService.name.split('.').first : resolvedService.name;
+            final device = CastDevice(id: resolvedService.name, name: deviceName, address: InternetAddress(ipv4Address), port: resolvedService.port, protocol: CastProtocol.chromecast);
+            if (!_foundDevices.any((d) => d.address.address == device.address.address) && mounted) {
+              setState(() { _foundDevices.add(device); _isSearching = false; });
             }
           }
         }
       }
     });
-
     await _chromecastDiscovery!.start();
   }
 
@@ -1796,23 +1207,14 @@ class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
   }
 
   @override
-  build(BuildContext context) {
+  Widget build(BuildContext context) {
     if (_foundDevices.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircularProgressIndicator(color: Color(0xFF00E676)),
-            const SizedBox(height: 12),
-            Text(
-              _isSearching ? "Procurando Chromecasts na rede..." : "Nenhum Chromecast encontrado",
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
-            ),
-          ],
-        ),
-      );
+      return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        const CircularProgressIndicator(color: Color(0xFF00E676)),
+        const SizedBox(height: 12),
+        Text(_isSearching ? "Procurando Chromecasts..." : "Nenhum Chromecast encontrado", style: const TextStyle(color: Colors.grey, fontSize: 13)),
+      ]));
     }
-
     return ListView.builder(
       itemCount: _foundDevices.length,
       itemBuilder: (context, index) {
@@ -1820,10 +1222,7 @@ class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
         return ListTile(
           leading: const Icon(Icons.cast, color: Color(0xFF00E676)),
           title: Text(device.name, style: const TextStyle(color: Colors.white)),
-          subtitle: Text(
-            "Chromecast • IP: ${device.address.address}:${device.port}",
-            style: const TextStyle(color: Colors.grey, fontSize: 11),
-          ),
+          subtitle: Text("Chromecast • IP: ${device.address.address}:${device.port}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
           trailing: const Icon(Icons.cast_connected, color: Colors.white70),
           onTap: () => widget.onDeviceSelected(device),
         );

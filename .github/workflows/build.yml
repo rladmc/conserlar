@@ -1,15 +1,12 @@
-name: Conserlar iOS Build Pipeline
+name: Build iOS Simulator
 
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch:
 
 jobs:
   build:
-    name: Build iOS App
     runs-on: macos-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -17,33 +14,12 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.47.5'
+          flutter-version: 'stable'
           channel: 'stable'
           cache: true
 
-      - name: Clean Pub Cache and Get Dependencies
-        run: |
-          flutter pub cache clean -f
-          flutter pub get
+      - name: Install Dependencies
+        run: flutter pub get
 
-      - name: Forçar iOS 16 em todos os arquivos do projeto e no Package.swift do SPM
-        run: |
-          find ios -name "*.pbxproj" -o -name "*.xcconfig" | xargs sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g'
-          plutil -replace MinimumOSVersion -string "16.0" ios/Runner/Info.plist || true
-          
-          # Gera a estrutura do SPM do Flutter para criarmos o arquivo Package.swift efêmero
-          flutter build ios --config-only --no-codesign
-          
-          # Força a versão 16.0 no Package.swift gerado pelo Flutter se ele existir
-          if [ -f "ios/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage/Package.swift" ]; then
-            sed -i '' 's/\.iOS("[0-9.]*")/\.iOS("16.0")/g' ios/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage/Package.swift
-          fi
-
-      - name: Build iOS App (No Codesign)
-        run: flutter build ios --release --no-codesign
-
-      - name: Upload iOS Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-release-app
-          path: build/ios/iphoneos/*.app
+      - name: Build iOS for Simulator (No Codesign)
+        run: flutter build ios --simulator --debug --no-codesign
