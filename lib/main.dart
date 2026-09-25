@@ -2375,10 +2375,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
         return shelf.Response.internalServerError(
           body: e.toString(),
         );
-      } finally {
-        // Nota: se fechar o client imediatamente no finally com streams longos do Chromecast,
-        // pode cortar o vídeo. O ideal é deixar o client fechar com o encerramento do stream ou gerenciar o ciclo.
-      }
+      } 
     });
 
     router.get('/media/<id>', (request, id) async {
