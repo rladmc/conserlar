@@ -50,13 +50,21 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/
 
-      # 2. Compilar o App para Dispositivo iOS (IPA)
-      - name: Build iOS Release IPA
-        run: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist --no-codesign
+      # 2. Compilar o App para Dispositivo iOS
+      - name: Build iOS App for Device
+        run: flutter build ios --release
 
-      # 3. Salvar o IPA como artefato do GitHub Actions
+      # 3. Empacotar em formato IPA
+      - name: Create IPA Package
+        run: |
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -r conserlar.ipa Payload
+          rm -rf Payload
+
+      # 4. Salvar o IPA como artefato do GitHub Actions
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: conserlar-ios-ipa
-          path: build/ios/ipa/*.ipa
+          path: conserlar.ipa
