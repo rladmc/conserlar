@@ -2375,7 +2375,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
         return shelf.Response.internalServerError(
           body: e.toString(),
         );
-      } 
+      }
     });
 
     router.get('/media/<id>', (request, id) async {
@@ -2812,6 +2812,9 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       }
 
       final session = await _castService.connect(targetDevice);
+      setState(() {
+        _isPlaying = true;
+      });
       final isImage = _currentMediaType == 'image';
 
       /*
@@ -3106,9 +3109,13 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
    * BUILD
    * ============================================================
    */
-
+  bool _isPlaying = true;
   @override
   Widget build(BuildContext context) {
+    // Verifica se existe uma sessão de Chromecast ativa no momento
+    final sessaoAtiva = _castService.activeSession;
+    final bool estaTransmitindo = sessaoAtiva != null;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -3132,13 +3139,39 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
                   ),
                 ),
               ),
+
+            
+
+            // OVERLAY FLUTUANTE DE CONTROLE DO CHROMECAST (Fica por cima do fundo preto)
+            if (estaTransmitindo)
+              CastControllerOverlay(
+                mediaTitle: _currentMediaTitle.isNotEmpty ? _currentMediaTitle : 'Aula Conserlar',
+                isPlaying: _isPlaying,
+                onPlayPause: () async {
+                  await alternarPlayPause(sessaoAtiva, _isPlaying);
+                  setState(() {
+                    _isPlaying = !_isPlaying;
+                  });
+                },
+                onStop: () async {
+                  await pararTransmissao(sessaoAtiva);
+                  setState(() {
+                    _isPlaying = true;
+                  });
+                },
+                onSeekBackward: () async {
+                  await mudarPosicao(sessaoAtiva, -10);
+                },
+                onSeekForward: () async {
+                  await mudarPosicao(sessaoAtiva, 10);
+                },
+              ),
           ],
         ),
       ),
     );
   }
 }
-
 /*
  * ==============================================================
  * DISCOVERY CHROMECAST
@@ -3345,5 +3378,157 @@ class _BonsoirDeviceListWidgetState
         );
       },
     );
+  }
+}
+
+// ==========================================================
+// WIDGET DO OVERLAY DE CONTROLE DO CHROMECAST
+// ==========================================================
+class CastControllerOverlay extends StatelessWidget {
+  final String mediaTitle;
+  final VoidCallback onPlayPause;
+  final VoidCallback onStop;
+  final VoidCallback onSeekForward;
+  final VoidCallback onSeekBackward;
+  final bool isPlaying;
+
+  const CastControllerOverlay({
+    Key? key,
+    required this.mediaTitle,
+    required this.onPlayPause,
+    required this.onStop,
+    required this.onSeekForward,
+    required this.onSeekBackward,
+    required this.isPlaying,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      bottom: 24,
+      left: 16,
+      right: 16,
+      child: Material(
+        color: Colors.transparent,
+        elevation: 8,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.85),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white24, width: 1),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.cast_connected, color: Color(0xFF00C853), size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      mediaTitle,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white70, size: 20),
+                    onPressed: onStop,
+                    tooltip: 'Parar Transmissão',
+                  ),
+                ],
+              ),
+              const Divider(color: Colors.white24, height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.replay_10, color: Colors.white, size: 28),
+                    onPressed: onSeekBackward,
+                    tooltip: 'Voltar 10 segundos',
+                  ),
+                  const SizedBox(width: 24),
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: const Color(0xFF00C853),
+                    child: IconButton(
+                      icon: Icon(
+                        isPlaying ? Icons.pause : Icons.play_arrow,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                      onPressed: onPlayPause,
+                    ),
+                  ),
+                  const SizedBox(width: 24),
+                  IconButton(
+                    icon: const Icon(Icons.forward_10, color: Colors.white, size: 28),
+                    onPressed: onSeekForward,
+                    tooltip: 'Avançar 10 segundos',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================================
+// FUNÇÕES DE CONTROLE CORRETAS USANDO A API DO DART_CAST
+// ==========================================================
+Future<void> alternarPlayPause(dynamic session, bool isPlayingAtual) async {
+  if (session == null) return;
+  try {
+    if (isPlayingAtual) {
+      await session.pause();
+    } else {
+      await session.play();
+    }
+    // Inverte o estado imediatamente na UI para refletir a ação
+    // (Certifique-se de atualizar a sua variável de estado, ex: setState(() => isPlaying = !isPlayingAtual))
+  } catch (e) {
+    debugPrint('ERRO PLAY/PAUSE CAST: $e');
+  }
+}
+
+Future<void> pararTransmissao(dynamic session) async {
+  if (session == null) return;
+  try {
+    await session.stop();
+  } catch (e) {
+    debugPrint('ERRO PARAR CAST: $e');
+  }
+}
+
+Future<void> mudarPosicao(dynamic session, int segundosDelta) async {
+  if (session == null) return;
+  try {
+    // Como a sessão aceita seek(Duration), podemos calcular a nova posição
+    // ou usar um valor aproximado baseado no delta de segundos.
+    // Exemplo: buscando a posição atual ou somando direto se houver tracking local.
+    // Vamos chamar o seek passando uma Duration baseada no delta:
+    final currentPos = await session.position ?? Duration.zero;
+    final novaPos = currentPos + Duration(seconds: segundosDelta);
+    await session.seek(novaPos);
+  } catch (e) {
+    debugPrint('ERRO SEEK CAST: $e');
+  }
+}
+
+Future<void> ajustarVolumeCast(dynamic session, double novoVolume) async {
+  if (session == null) return;
+  try {
+    await session.setVolume(novoVolume);
+  } catch (e) {
+    debugPrint('ERRO VOLUME CAST: $e');
   }
 }
