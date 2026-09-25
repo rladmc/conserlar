@@ -883,7 +883,41 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
           controller.runJavaScript('''
             (function() {
               var style = document.createElement('style');
-              style.innerHTML = `body { background-color: #121212 !important; color: #E0E0E0 !important; } button[onclick*="alternarAba"] { display: none !important; }`;
+              style.innerHTML = `
+                body { background-color: #121212 !important; color: #E0E0E0 !important; }
+                
+                /* Libera o container para não cortar nada à esquerda */
+                header, nav, .navbar, .navbar-nav, .menu, .container-fluid, .row, div {
+                  overflow: visible;
+                }
+
+                /* Força a barra de navegação/menu principal a aceitar scroll horizontal completo, alinhado à esquerda */
+                header nav, .navbar-nav, .menu, nav ul, .nav, .nav-tabs, [class*="menu"], [class*="nav"] {
+                  display: flex !important;
+                  flex-direction: row !important;
+                  flex-wrap: nowrap !important;
+                  justify-content: flex-start !important;
+                  align-items: center !important;
+                  overflow-x: auto !important;
+                  overflow-y: hidden !important;
+                  white-space: nowrap !important;
+                  -webkit-overflow-scrolling: touch !important;
+                  scrollbar-width: none !important;
+                  padding-left: 10px !important;
+                }
+                
+                /* Esconde a barra de rolagem visual mantendo a função de toque */
+                header nav::-webkit-scrollbar, .navbar-nav::-webkit-scrollbar, .menu::-webkit-scrollbar, nav ul::-webkit-scrollbar, .nav::-webkit-scrollbar, .nav-tabs::-webkit-scrollbar {
+                  display: none !important;
+                }
+
+                /* Garante que todos os itens do menu fiquem acessíveis, sem encolher */
+                header nav li, .navbar-nav li, .menu li, nav ul li, .nav-item, .nav-link, a {
+                  flex: 0 0 auto !important;
+                  white-space: nowrap !important;
+                  display: inline-block !important;
+                }
+              `;
               document.head.appendChild(style);
 
               var checkBtnCastName = setInterval(function() {
@@ -1032,28 +1066,11 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
               const Text('Selecione um aparelho:', style: TextStyle(color: Colors.grey, fontSize: 12)),
               const Divider(color: Colors.grey),
               Expanded(
-                child: Platform.isIOS
-                    ? _BonsoirDeviceListWidget(onDeviceSelected: (device) async { Navigator.pop(context); await _enviarMidiaParaDispositivo(device); })
-                    : StreamBuilder<List<CastDevice>>(
-                  stream: _castService.startDiscovery(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return const Center(child: CircularProgressIndicator(color: Color(0xFF00E676)));
-                    }
-                    final devices = snapshot.data!;
-                    return ListView.builder(
-                      itemCount: devices.length,
-                      itemBuilder: (context, index) {
-                        final device = devices[index];
-                        return ListTile(
-                          leading: const Icon(Icons.cast, color: Color(0xFF00E676)),
-                          title: Text(device.name, style: const TextStyle(color: Colors.white)),
-                          subtitle: Text('Protocolo: ${device.protocol.name.toUpperCase()}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
-                          trailing: const Icon(Icons.cast_connected, color: Colors.white70),
-                          onTap: () async { Navigator.pop(context); await _enviarMidiaParaDispositivo(device); },
-                        );
-                      },
-                    );
+                child: _BonsoirDeviceListWidget(
+                  castService: _castService,
+                  onDeviceSelected: (device) async {
+                    Navigator.pop(context);
+                    await _enviarMidiaParaDispositivo(device);
                   },
                 ),
               ),
@@ -1157,8 +1174,9 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
 }
 
 class _BonsoirDeviceListWidget extends StatefulWidget {
+  final CastService castService;
   final Function(CastDevice) onDeviceSelected;
-  const _BonsoirDeviceListWidget({required this.onDeviceSelected});
+  const _BonsoirDeviceListWidget({required this.castService, required this.onDeviceSelected});
   @override
   State<_BonsoirDeviceListWidget> createState() => _BonsoirDeviceListWidgetState();
 }
@@ -1171,10 +1189,11 @@ class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
   @override
   void initState() {
     super.initState();
-    _startChromecastDiscovery();
+    _startDiscoveryUnified();
   }
 
-  void _startChromecastDiscovery() async {
+  void _startDiscoveryUnified() async {
+    // Inicializa o Bonsoir para varrer Chromecast no iOS de forma nativa
     _chromecastDiscovery = BonsoirDiscovery(type: '_googlecast._tcp');
     await _chromecastDiscovery!.initialize();
     _chromecastDiscovery!.eventStream!.listen((event) {
@@ -1208,23 +1227,40 @@ class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (_foundDevices.isEmpty) {
-      return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        const CircularProgressIndicator(color: Color(0xFF00E676)),
-        const SizedBox(height: 12),
-        Text(_isSearching ? "Procurando Chromecasts..." : "Nenhum Chromecast encontrado", style: const TextStyle(color: Colors.grey, fontSize: 13)),
-      ]));
-    }
-    return ListView.builder(
-      itemCount: _foundDevices.length,
-      itemBuilder: (context, index) {
-        final device = _foundDevices[index];
-        return ListTile(
-          leading: const Icon(Icons.cast, color: Color(0xFF00E676)),
-          title: Text(device.name, style: const TextStyle(color: Colors.white)),
-          subtitle: Text("Chromecast • IP: ${device.address.address}:${device.port}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
-          trailing: const Icon(Icons.cast_connected, color: Colors.white70),
-          onTap: () => widget.onDeviceSelected(device),
+    // Unifica a listagem utilizando tanto o Bonsoir (essencial pro iOS achar Chromecast na rede local) quanto o nativo do CastService
+    return StreamBuilder<List<CastDevice>>(
+      stream: widget.castService.startDiscovery(),
+      builder: (context, snapshot) {
+        final List<CastDevice> devices = [];
+        if (snapshot.hasData) {
+          devices.addAll(snapshot.data!);
+        }
+        for (var d in _foundDevices) {
+          if (!devices.any((existing) => existing.address.address == d.address.address)) {
+            devices.add(d);
+          }
+        }
+
+        if (devices.isEmpty) {
+          return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const CircularProgressIndicator(color: Color(0xFF00E676)),
+            const SizedBox(height: 12),
+            Text(_isSearching ? "Procurando aparelhos na rede..." : "Nenhum dispositivo encontrado", style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          ]));
+        }
+
+        return ListView.builder(
+          itemCount: devices.length,
+          itemBuilder: (context, index) {
+            final device = devices[index];
+            return ListTile(
+              leading: const Icon(Icons.cast, color: Color(0xFF00E676)),
+              title: Text(device.name, style: const TextStyle(color: Colors.white)),
+              subtitle: Text("Protocolo: ${device.protocol.name.toUpperCase()} • IP: ${device.address.address}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
+              trailing: const Icon(Icons.cast_connected, color: Colors.white70),
+              onTap: () => widget.onDeviceSelected(device),
+            );
+          },
         );
       },
     );
