@@ -2845,10 +2845,14 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
         final mp4 = await _converterImagemParaMp4(response.bodyBytes);
         final mediaUrl = await _publicarMp4ParaChromecast(mp4);
 
+        final tituloFinal = _currentMediaTitle.trim().isNotEmpty
+            ? '${_currentMediaTitle.trim()} - Conserlar'
+            : 'Esquema Conserlar';
+
         await session.loadMedia(
           CastMedia(
             url: mediaUrl,
-            title: _currentMediaTitle.trim().isNotEmpty ? _currentMediaTitle.trim() : 'Esquema Conserlar',
+            title: tituloFinal,
             type: CastMediaType.mp4,
           ),
         );
@@ -2873,7 +2877,6 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
        */
       debugPrint('[CAST] Preparando vídeo com proxy (Referer)...');
 
-      // Passa pelo proxy para garantir o Referer exigido pela CDN
       final videoUrl = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
 
       debugPrint('');
@@ -2888,10 +2891,14 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
         );
       }
 
+      final tituloVideoFinal = _currentMediaTitle.trim().isNotEmpty
+          ? '${_currentMediaTitle.trim()} - Conserlar'
+          : 'Aula Conserlar';
+
       await session.loadMedia(
         CastMedia(
           url: videoUrl,
-          title: _currentMediaTitle.trim().isNotEmpty ? _currentMediaTitle.trim() : 'Aula Conserlar',
+          title: tituloVideoFinal,
           type: CastMediaType.mp4,
         ),
       );
