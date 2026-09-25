@@ -888,19 +888,20 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
             if (!mounted) return;
 
             /*
-             * IMPORTANTE:
-             *
-             * O JavaScript agora só deve mandar uma mídia real.
-             * Mesmo assim fazemos uma segunda validação no Dart
-             * para impedir que uma URL de página/planilha seja usada.
-             */
+       * IMPORTANTE:
+       *
+       * O JavaScript agora só deve mandar uma mídia real.
+       * Mesmo assim fazemos uma segunda validação no Dart
+       * para impedir que uma URL de página/planilha seja usada.
+       */
             if (!_pareceSerMidiaValida(url, tipo)) {
               debugPrint(
                 'URL IGNORADA: não parece ser uma mídia real: $url',
               );
-
               return;
             }
+
+            final mudouDeMidia = url.isNotEmpty && url != _currentMediaUrl;
 
             setState(() {
               _currentMediaUrl = url;
@@ -913,6 +914,11 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
             if ((data['abrirMenu'] ?? false) &&
                 _currentMediaUrl.isNotEmpty) {
               _mostrarMenuDispositivosTransmissao();
+            }
+            // AUTO-CAST: Se o usuário já conectou a TV antes e mudou de aula/esquema
+            else if (mudouDeMidia && _castService.activeSession != null) {
+              debugPrint('[CAST] Nova mídia detectada com sessão ativa. Disparando Auto-Cast...');
+              _enviarMidiaParaDispositivo(null, true); // true = modo silencioso (sem popups)
             }
           } catch (e) {
             debugPrint('ERRO BRIDGE: $e');
@@ -2763,11 +2769,11 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
     );
   }
 
-  /*
- * ============================================================
- * PAUSAR VÍDEO NA TV
- * ============================================================
- */
+/*
+* ============================================================
+* PAUSAR VÍDEO NA TV
+* ============================================================
+*/
 
   Future<void> _pausarVideoDaImagem(CastSession session) async {
     try {
@@ -2786,23 +2792,26 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
   }
 
   /*
- * ============================================================
- * CAST
- * ============================================================
- */
+* ============================================================
+* CAST
+* ============================================================
+*/
 
   Future<void> _enviarMidiaParaDispositivo(
-      CastDevice device,
+      [CastDevice? device, bool silencioso = false]
       ) async {
     try {
+      final targetDevice = device ?? _castService.activeSession?.device;
+      if (targetDevice == null) return;
+
       debugPrint('');
       debugPrint('======================================');
       debugPrint('INICIANDO CAST');
-      debugPrint('DEVICE: ${device.name}');
+      debugPrint('DEVICE: ${targetDevice.name}');
       debugPrint(
-        'IP: ${device.address.address}',
+        'IP: ${targetDevice.address.address}',
       );
-      debugPrint('PORTA: ${device.port}');
+      debugPrint('PORTA: ${targetDevice.port}');
       debugPrint(
         'TIPO: $_currentMediaType',
       );
@@ -2812,9 +2821,9 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       debugPrint('======================================');
 
       /*
-     * SEGURANÇA:
-     * nunca transmitir URL inválida.
-     */
+    * SEGURANÇA:
+    * nunca transmitir URL inválida.
+    */
       if (!_pareceSerMidiaValida(
         _currentMediaUrl,
         _currentMediaType,
@@ -2826,33 +2835,25 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       }
 
       /*
-     * ==========================================================
-     * CONECTAR AO DISPOSITIVO
-     * ==========================================================
-     */
+    * ==========================================================
+    * CONECTAR AO DISPOSITIVO
+    * ==========================================================
+    */
 
       final session =
-      await _castService.connect(device);
+      await _castService.connect(targetDevice);
 
       final isImage =
           _currentMediaType == 'image';
 
       /*
-     * ==========================================================
-     * IMAGEM
-     * ==========================================================
-     */
+    * ==========================================================
+    * IMAGEM
+    * ==========================================================
+    */
 
       if (isImage) {
-        /*
-       * IMPORTANTE:
-       *
-       * Se já existe um vídeo sendo reproduzido na TV,
-       * pausa imediatamente antes de preparar a imagem.
-       */
-       // await _pausarVideoNaTv();
-
-        if (mounted) {
+        if (!silencioso && mounted) {
           ScaffoldMessenger.of(context)
               .showSnackBar(
             const SnackBar(
@@ -2864,10 +2865,10 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
         }
 
         /*
-       * ========================================================
-       * BAIXAR IMAGEM REAL
-       * ========================================================
-       */
+      * ========================================================
+      * BAIXAR IMAGEM REAL
+      * ========================================================
+      */
 
         debugPrint(
           'BAIXANDO IMAGEM REAL: '
@@ -2914,12 +2915,12 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
         }
 
         /*
-       * ========================================================
-       * CONVERTER IMAGEM PARA MP4
-       * ========================================================
-       */
+      * ========================================================
+      * CONVERTER IMAGEM PARA MP4
+      * ========================================================
+      */
 
-        if (mounted) {
+        if (!silencioso && mounted) {
           ScaffoldMessenger.of(context)
               .showSnackBar(
             const SnackBar(
@@ -2951,10 +2952,10 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
         );
 
         /*
-       * ========================================================
-       * PUBLICAR MP4 NA REDE LOCAL
-       * ========================================================
-       */
+      * ========================================================
+      * PUBLICAR MP4 NA REDE LOCAL
+      * ========================================================
+      */
 
         final mediaUrl =
         await _publicarMp4ParaChromecast(
@@ -2968,10 +2969,10 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
         debugPrint(mediaUrl);
 
         /*
-       * ========================================================
-       * CARREGAR IMAGEM NA TV
-       * ========================================================
-       */
+      * ========================================================
+      * CARREGAR IMAGEM NA TV
+      * ========================================================
+      */
 
         debugPrint(
           '[CAST] Carregando imagem convertida na TV...',
@@ -2997,7 +2998,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 
         await _pausarVideoDaImagem(session);
 
-        if (mounted) {
+        if (!silencioso && mounted) {
           ScaffoldMessenger.of(context)
               .showSnackBar(
             const SnackBar(
@@ -3014,10 +3015,10 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       }
 
       /*
-     * ==========================================================
-     * VÍDEO
-     * ==========================================================
-     */
+    * ==========================================================
+    * VÍDEO
+    * ==========================================================
+    */
 
       debugPrint(
         '[CAST] Preparando vídeo...',
@@ -3035,10 +3036,10 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       debugPrint('======================================');
 
       /*
-     * ==========================================================
-     * CARREGAR VÍDEO NA TV
-     * ==========================================================
-     */
+    * ==========================================================
+    * CARREGAR VÍDEO NA TV
+    * ==========================================================
+    */
 
       await session.loadMedia(
         CastMedia(
