@@ -801,36 +801,57 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
 
 class TelaDeEstudosSegura extends StatefulWidget {
   const TelaDeEstudosSegura({super.key});
+
   @override
   State<TelaDeEstudosSegura> createState() => _TelaDeEstudosSeguraState();
 }
 
-class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsBindingObserver {
+class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
+    with WidgetsBindingObserver {
   late final WebViewController controller;
+
   bool _conteudoVisivel = true;
   bool _isFullScreen = false;
+
   String _currentMediaUrl = '';
   String _currentMediaTitle = '';
   String _currentMediaType = 'video';
+
   HttpServer? _localProxyServer;
   final int _localProxyPort = 8080;
 
+  final Map<String, File> _mediaFiles = {};
+
   late final CastService _castService = CastService(
-    discoveryProviders: [ChromecastDiscoveryProvider(), DlnaDiscoveryProvider()],
+    discoveryProviders: [
+      ChromecastDiscoveryProvider(),
+      DlnaDiscoveryProvider(),
+    ],
     sessionFactory: (device) {
       switch (device.protocol) {
         case CastProtocol.chromecast:
           return ChromecastSession(device: device);
+
         case CastProtocol.dlna:
-          final dlnaDescription = DlnaDeviceDescription(
-            friendlyName: device.name, manufacturer: 'Generic DLNA', modelName: 'Smart TV', udn: device.id,
-            locationUrl: 'http://${device.address}:${device.port}/description.xml',
+          return DlnaSession(
+            device: device,
+            description: DlnaDeviceDescription(
+              friendlyName: device.name,
+              manufacturer: 'Generic DLNA',
+              modelName: 'Smart TV',
+              udn: device.id,
+              locationUrl:
+              'http://${device.address}:${device.port}/description.xml',
+            ),
           );
-          return DlnaSession(device: device, description: dlnaDescription);
+
         case CastProtocol.airplay:
           return AirPlaySession(device);
+
         default:
-          throw UnsupportedError('Protocolo não suportado: ${device.protocol}');
+          throw UnsupportedError(
+            'Protocolo não suportado: ${device.protocol}',
+          );
       }
     },
   );
@@ -838,324 +859,2402 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   @override
   void initState() {
     super.initState();
+
     WidgetsBinding.instance.addObserver(this);
+
     _iniciarServidorProxyLocal();
+
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent('iphoneconserlar2026')
-      ..addJavaScriptChannel('AndroidCastBridge', onMessageReceived: (JavaScriptMessage message) {
-        try {
-          final data = jsonDecode(message.message);
-          if (!mounted) return;
-          setState(() {
-            _currentMediaUrl = data['url'] ?? '';
-            _currentMediaTitle = data['titulo'] ?? 'Conserlar Aula';
-            _currentMediaType = data['tipo'] ?? 'video';
-          });
-          if ((data['abrirMenu'] ?? false) && _currentMediaUrl.isNotEmpty) {
-            _mostrarMenuDispositivosTransmissao();
-          }
-        } catch (e) {
-          if (message.message.contains('pararTransmissao')) _pararTransmissaoNaTv();
-        }
-      })
-      ..setNavigationDelegate(NavigationDelegate(
-        onNavigationRequest: (NavigationRequest request) {
-          if (request.url.contains('app://full_clicked')) {
-            _toggleFullInterno();
-            return NavigationDecision.prevent;
-          }
-          if (request.url.contains('app://airplay_clicked')) {
-            _acionarAirPlayNativo();
-            return NavigationDecision.prevent;
-          }
-          if (request.url.contains('app://cast_clicked')) {
-            if (_currentMediaUrl.isNotEmpty) {
-              _mostrarMenuDispositivosTransmissao();
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aguarde a mídia carregar na tela...')));
+      ..addJavaScriptChannel(
+        'AndroidCastBridge',
+        onMessageReceived: (message) {
+          try {
+            final data = jsonDecode(message.message);
+
+            final url = (data['url'] ?? '').toString().trim();
+            final titulo = (data['titulo'] ?? '').toString().trim();
+            final tipo = (data['tipo'] ?? 'video').toString().trim();
+
+            debugPrint('');
+            debugPrint('======================================');
+            debugPrint('MEDIA RECEBIDA DO WEBVIEW');
+            debugPrint('TIPO: $tipo');
+            debugPrint('URL: $url');
+            debugPrint('TÍTULO: $titulo');
+            debugPrint('======================================');
+
+            if (!mounted) return;
+
+            /*
+             * IMPORTANTE:
+             *
+             * O JavaScript agora só deve mandar uma mídia real.
+             * Mesmo assim fazemos uma segunda validação no Dart
+             * para impedir que uma URL de página/planilha seja usada.
+             */
+            if (!_pareceSerMidiaValida(url, tipo)) {
+              debugPrint(
+                'URL IGNORADA: não parece ser uma mídia real: $url',
+              );
+
+              return;
             }
-            return NavigationDecision.prevent;
+
+            setState(() {
+              _currentMediaUrl = url;
+              _currentMediaTitle =
+              titulo.isNotEmpty ? titulo : 'Aula Conserlar';
+              _currentMediaType =
+              tipo == 'image' ? 'image' : 'video';
+            });
+
+            if ((data['abrirMenu'] ?? false) &&
+                _currentMediaUrl.isNotEmpty) {
+              _mostrarMenuDispositivosTransmissao();
+            }
+          } catch (e) {
+            debugPrint('ERRO BRIDGE: $e');
+
+            if (message.message.contains('pararTransmissao')) {
+              _pararTransmissaoNaTv();
+            }
           }
-          return NavigationDecision.navigate;
         },
-        onPageFinished: (String url) {
-          controller.runJavaScript('''
-            (function() {
-              var style = document.createElement('style');
-              style.innerHTML = `
-                body { background-color: #121212 !important; color: #E0E0E0 !important; }
-                
-                /* Libera o container para não cortar nada à esquerda */
-                header, nav, .navbar, .navbar-nav, .menu, .container-fluid, .row, div {
-                  overflow: visible;
-                }
+      )
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (request) {
+            if (request.url.contains('app://full_clicked') ||
+                request.url.contains('app://exit_full_clicked')) {
+              _toggleFullInterno();
+              return NavigationDecision.prevent;
+            }
 
-                /* Força a barra de navegação/menu principal a aceitar scroll horizontal completo, alinhado à esquerda */
-                header nav, .navbar-nav, .menu, nav ul, .nav, .nav-tabs, [class*="menu"], [class*="nav"] {
-                  display: flex !important;
-                  flex-direction: row !important;
-                  flex-wrap: nowrap !important;
-                  justify-content: flex-start !important;
-                  align-items: center !important;
-                  overflow-x: auto !important;
-                  overflow-y: hidden !important;
-                  white-space: nowrap !important;
-                  -webkit-overflow-scrolling: touch !important;
-                  scrollbar-width: none !important;
-                  padding-left: 10px !important;
-                }
-                
-                /* Esconde a barra de rolagem visual mantendo a função de toque */
-                header nav::-webkit-scrollbar, .navbar-nav::-webkit-scrollbar, .menu::-webkit-scrollbar, nav ul::-webkit-scrollbar, .nav::-webkit-scrollbar, .nav-tabs::-webkit-scrollbar {
-                  display: none !important;
-                }
+            if (request.url.contains('app://airplay_clicked')) {
+              _acionarAirPlayNativo();
+              return NavigationDecision.prevent;
+            }
 
-                /* Garante que todos os itens do menu fiquem acessíveis, sem encolher */
-                header nav li, .navbar-nav li, .menu li, nav ul li, .nav-item, .nav-link, a {
-                  flex: 0 0 auto !important;
-                  white-space: nowrap !important;
-                  display: inline-block !important;
-                }
-              `;
-              document.head.appendChild(style);
-
-              var checkBtnCastName = setInterval(function() {
-                var btnCastSite = document.getElementById('btnCast');
-                if (btnCastSite && !btnCastSite.dataset.configurado) {
-                  btnCastSite.dataset.configurado = "true";
-                  btnCastSite.innerText = "Transmitir";
-                  btnCastSite.onclick = function(e) {
-                    e.preventDefault();
-                    var info = getMidiaInfo();
-                    info.abrirMenu = true;
-                    if (window.AndroidCastBridge) window.AndroidCastBridge.postMessage(JSON.stringify(info));
-                  };
-                  clearInterval(checkBtnCastName);
-                }
-              }, 500);
-
-              var checkBtnFullName = setInterval(function() {
-                var btnFullSite = document.getElementById('btnFull');
-                if (btnFullSite && !btnFullSite.dataset.configurado) {
-                  btnFullSite.dataset.configurado = "true";
-                  btnFullSite.innerText = "Full";
-                  btnFullSite.id = "btnFullInjetado";
-                  btnFullSite.onclick = function(e) {
-                    e.preventDefault();
-                    window.location.href = "app://full_clicked";
-                  };
-                  clearInterval(checkBtnFullName);
-                }
-              }, 500);
-
-              function getMidiaInfo() {
-                var mediaViewer = document.getElementById('mediaViewer');
-                if (mediaViewer && mediaViewer.src && !mediaViewer.classList.contains('d-none') && mediaViewer.src !== window.location.href && mediaViewer.src !== "") {
-                  var srcUrl = mediaViewer.src;
-                  if (srcUrl.includes('mediadelivery.net')) {
-                    var partes = srcUrl.split('/');
-                    var videoId = partes[partes.length - 1].split('?')[0];
-                    if (videoId && videoId.length > 10) {
-                      return { url: "https://vz-84a4a5f4-d42.b-cdn.net/" + videoId + "/play_360p.mp4", titulo: document.title || 'Aula Conserlar', tipo: 'video', abrirMenu: false };
-                    }
-                  }
-                  return { url: srcUrl, titulo: document.title || 'Aula Conserlar', tipo: 'video', abrirMenu: false };
-                }
-                var imgApostila = document.getElementById('imagemApostila');
-                if (imgApostila && !imgApostila.classList.contains('d-none')) {
-                  var iUrl = imgApostila.src || imgApostila.getAttribute('data-src') || '';
-                  if (iUrl) return { url: iUrl, titulo: document.title || 'Esquema Conserlar', tipo: 'image', abrirMenu: false };
-                }
-                return { url: '', titulo: '', tipo: 'video', abrirMenu: false };
+            if (request.url.contains('app://cast_clicked')) {
+              if (_currentMediaUrl.isNotEmpty &&
+                  _pareceSerMidiaValida(
+                    _currentMediaUrl,
+                    _currentMediaType,
+                  )) {
+                _mostrarMenuDispositivosTransmissao();
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Aguarde a mídia real carregar na tela...',
+                    ),
+                  ),
+                );
               }
 
-              setInterval(function() {
-                var info = getMidiaInfo();
-                if (info.url && window.AndroidCastBridge) window.AndroidCastBridge.postMessage(JSON.stringify(info));
-              }, 2000);
-            })();
-          ''');
-        },
-      ))
-      ..loadRequest(Uri.parse('https://aluno.conserlar.com'));
+              return NavigationDecision.prevent;
+            }
+
+            return NavigationDecision.navigate;
+          },
+          onPageFinished: (_) => _configurarWebView(),
+        ),
+      )
+      ..loadRequest(
+        Uri.parse('https://aluno.conserlar.com'),
+      );
   }
+
+  /*
+   * ============================================================
+   * VALIDAÇÃO DART
+   * ============================================================
+   */
+
+  bool _pareceSerMidiaValida(String url, String tipo) {
+    if (url.isEmpty) return false;
+
+    final lower = url.toLowerCase();
+
+    /*
+     * Nunca aceitar como mídia a própria página/documento.
+     */
+    final bloqueadas = [
+      '.html',
+      '.htm',
+      '.php',
+      '.asp',
+      '.aspx',
+      '/planilha',
+      '/planilhas',
+      '/spreadsheet',
+      '/document',
+      '/documento',
+      '/pagas/',
+      'google.com',
+      'docs.google.com',
+      'drive.google.com',
+    ];
+
+    for (final item in bloqueadas) {
+      if (lower.contains(item)) {
+        /*
+         * Exceção:
+         *
+         * /pagas/ sozinho não significa necessariamente que seja
+         * página, então não usamos isso como bloqueio absoluto
+         * quando a URL possui extensão de mídia.
+         */
+        if (lower.endsWith('.mp4') ||
+            lower.endsWith('.webm') ||
+            lower.endsWith('.m3u8') ||
+            lower.endsWith('.jpg') ||
+            lower.endsWith('.jpeg') ||
+            lower.endsWith('.png') ||
+            lower.endsWith('.webp')) {
+          continue;
+        }
+
+        return false;
+      }
+    }
+
+    if (tipo == 'image') {
+      return _pareceImagem(url);
+    }
+
+    if (tipo == 'video') {
+      /*
+       * Alguns vídeos do Bunny/CDN não possuem extensão .mp4
+       * na URL. Por isso não exigimos extensão.
+       */
+      return lower.startsWith('http://') ||
+          lower.startsWith('https://');
+    }
+
+    return false;
+  }
+
+  bool _pareceImagem(String url) {
+    final lower = url.toLowerCase();
+
+    return lower.contains('.jpg') ||
+        lower.contains('.jpeg') ||
+        lower.contains('.png') ||
+        lower.contains('.webp') ||
+        lower.contains('.gif') ||
+        lower.contains('.bmp') ||
+        lower.contains('image/');
+  }
+
+  /*
+   * ============================================================
+   * JAVASCRIPT
+   *
+   * A diferença principal está aqui.
+   *
+   * NÃO usamos mais window.location.
+   * NÃO usamos URL da página.
+   * NÃO usamos link da planilha.
+   *
+   * Procuramos o elemento REAL que está mostrando a mídia.
+   * ============================================================
+   */
+
+  void _configurarWebView() {
+    controller.runJavaScript(r'''
+    (function() {
+      console.log('[CONSERLAR] Configurando WebView...');
+
+      /*
+       * ============================================================
+       * MENU HORIZONTAL
+       * ============================================================
+       */
+
+      function configurarMenuHorizontal() {
+        /*
+         * Cria o CSS somente uma vez.
+         */
+        if (!document.getElementById('conserlarCastStyle')) {
+          var style = document.createElement('style');
+
+          style.id = 'conserlarCastStyle';
+
+          style.innerHTML = `
+            /*
+             * Containers externos não podem cortar o menu.
+             */
+            header,
+            nav,
+            .navbar,
+            .navbar-nav,
+            .menu,
+            .container-fluid,
+            .row {
+              overflow: visible !important;
+            }
+
+            /*
+             * MENU PRINCIPAL
+             */
+            #menuNavegacaoSuperior {
+              display: flex !important;
+
+              flex-direction: row !important;
+
+              flex-wrap: nowrap !important;
+
+              justify-content: flex-start !important;
+
+              align-items: center !important;
+
+              width: 100% !important;
+
+              max-width: 100% !important;
+
+              overflow-x: auto !important;
+
+              overflow-y: hidden !important;
+
+              white-space: nowrap !important;
+
+              -webkit-overflow-scrolling: touch !important;
+
+              scrollbar-width: none !important;
+
+              padding-left: 10px !important;
+
+              padding-right: 10px !important;
+
+              gap: 4px !important;
+            }
+
+            /*
+             * Esconde a barra de rolagem no Chrome/WebView.
+             */
+            #menuNavegacaoSuperior::-webkit-scrollbar {
+              display: none !important;
+
+              width: 0 !important;
+
+              height: 0 !important;
+            }
+
+            /*
+             * Cada item fica lado a lado.
+             */
+            #menuNavegacaoSuperior .nav-item {
+              display: inline-flex !important;
+
+              flex: 0 0 auto !important;
+
+              width: auto !important;
+
+              max-width: none !important;
+
+              white-space: nowrap !important;
+            }
+
+            /*
+             * Links do menu também não podem quebrar.
+             */
+            #menuNavegacaoSuperior .nav-link {
+              display: inline-flex !important;
+
+              align-items: center !important;
+
+              flex: 0 0 auto !important;
+
+              width: auto !important;
+
+              white-space: nowrap !important;
+            }
+
+            /*
+             * Caso o menu use <li> sem Bootstrap.
+             */
+            #menuNavegacaoSuperior > li {
+              display: inline-flex !important;
+
+              flex: 0 0 auto !important;
+
+              width: auto !important;
+
+              white-space: nowrap !important;
+            }
+
+            /*
+             * Evita que algum container interno force
+             * o menu a ficar vertical.
+             */
+            #menuNavegacaoSuperior > ul,
+            #menuNavegacaoSuperior .navbar-nav {
+              display: flex !important;
+
+              flex-direction: row !important;
+
+              flex-wrap: nowrap !important;
+
+              align-items: center !important;
+
+              width: max-content !important;
+
+              min-width: max-content !important;
+
+              white-space: nowrap !important;
+
+              overflow: visible !important;
+            }
+
+            /*
+             * Se houver dropdown, ele continua funcionando.
+             */
+            #menuNavegacaoSuperior .dropdown {
+              position: relative !important;
+
+              flex: 0 0 auto !important;
+            }
+
+            /*
+             * Botões também ficam lado a lado.
+             */
+            #menuNavegacaoSuperior button {
+              flex: 0 0 auto !important;
+
+              width: auto !important;
+
+              white-space: nowrap !important;
+            }
+
+            /*
+             * Não deixa o Bootstrap transformar o menu
+             * em coluna em telas pequenas.
+             */
+            @media (max-width: 768px) {
+              #menuNavegacaoSuperior {
+                display: flex !important;
+
+                flex-direction: row !important;
+
+                flex-wrap: nowrap !important;
+
+                overflow-x: auto !important;
+
+                overflow-y: hidden !important;
+              }
+
+              #menuNavegacaoSuperior .navbar-nav {
+                display: flex !important;
+
+                flex-direction: row !important;
+
+                flex-wrap: nowrap !important;
+
+                width: max-content !important;
+
+                min-width: max-content !important;
+              }
+            }
+          `;
+
+          document.head.appendChild(style);
+
+          console.log(
+            '[CONSERLAR] CSS do menu horizontal instalado.'
+          );
+        }
+
+        /*
+         * ========================================================
+         * FORÇA O MENU EXISTENTE
+         * ========================================================
+         *
+         * Além do CSS, aplicamos diretamente os estilos.
+         * Isso ajuda caso o site tenha algum JavaScript
+         * sobrescrevendo o Bootstrap.
+         */
+
+        var menu =
+          document.getElementById(
+            'menuNavegacaoSuperior'
+          );
+
+        if (!menu) {
+          console.log(
+            '[CONSERLAR] menuNavegacaoSuperior ainda não encontrado.'
+          );
+
+          return;
+        }
+
+        menu.style.setProperty(
+          'display',
+          'flex',
+          'important'
+        );
+
+        menu.style.setProperty(
+          'flex-direction',
+          'row',
+          'important'
+        );
+
+        menu.style.setProperty(
+          'flex-wrap',
+          'nowrap',
+          'important'
+        );
+
+        menu.style.setProperty(
+          'justify-content',
+          'flex-start',
+          'important'
+        );
+
+        menu.style.setProperty(
+          'align-items',
+          'center',
+          'important'
+        );
+
+        menu.style.setProperty(
+          'width',
+          '100%',
+          'important'
+        );
+
+        menu.style.setProperty(
+          'max-width',
+          '100%',
+          'important'
+        );
+
+        menu.style.setProperty(
+          'overflow-x',
+          'auto',
+          'important'
+        );
+
+        menu.style.setProperty(
+          'overflow-y',
+          'hidden',
+          'important'
+        );
+
+        menu.style.setProperty(
+          'white-space',
+          'nowrap',
+          'important'
+        );
+
+        menu.style.setProperty(
+          '-webkit-overflow-scrolling',
+          'touch',
+          'important'
+        );
+
+        /*
+         * Procura o container interno do menu.
+         */
+        var menuInterno =
+          menu.querySelector(
+            '.navbar-nav'
+          );
+
+        if (!menuInterno) {
+          menuInterno =
+            menu.querySelector('ul');
+        }
+
+        if (menuInterno) {
+          menuInterno.style.setProperty(
+            'display',
+            'flex',
+            'important'
+          );
+
+          menuInterno.style.setProperty(
+            'flex-direction',
+            'row',
+            'important'
+          );
+
+          menuInterno.style.setProperty(
+            'flex-wrap',
+            'nowrap',
+            'important'
+          );
+
+          menuInterno.style.setProperty(
+            'width',
+            'max-content',
+            'important'
+          );
+
+          menuInterno.style.setProperty(
+            'min-width',
+            'max-content',
+            'important'
+          );
+
+          menuInterno.style.setProperty(
+            'white-space',
+            'nowrap',
+            'important'
+          );
+
+          menuInterno.style.setProperty(
+            'overflow',
+            'visible',
+            'important'
+          );
+        }
+
+        /*
+         * Cada item.
+         */
+        var itens =
+          menu.querySelectorAll(
+            '.nav-item, li'
+          );
+
+        for (var i = 0; i < itens.length; i++) {
+          itens[i].style.setProperty(
+            'display',
+            'inline-flex',
+            'important'
+          );
+
+          itens[i].style.setProperty(
+            'flex',
+            '0 0 auto',
+            'important'
+          );
+
+          itens[i].style.setProperty(
+            'width',
+            'auto',
+            'important'
+          );
+
+          itens[i].style.setProperty(
+            'white-space',
+            'nowrap',
+            'important'
+          );
+        }
+      }
+
+      /*
+       * Executa agora.
+       */
+      configurarMenuHorizontal();
+
+      /*
+       * O site pode recriar o menu depois que a página
+       * termina de carregar. Por isso verificamos novamente.
+       */
+      setTimeout(
+        configurarMenuHorizontal,
+        300
+      );
+
+      setTimeout(
+        configurarMenuHorizontal,
+        1000
+      );
+
+      setTimeout(
+        configurarMenuHorizontal,
+        2000
+      );
+
+      setInterval(
+        configurarMenuHorizontal,
+        1500
+      );
+
+
+      /*
+       * ============================================================
+       * DETECTOR DE MÍDIA REAL
+       * ============================================================
+       */
+
+      console.log(
+        '[CONSERLAR CAST] Instalando detector de mídia real...'
+      );
+
+      if (window.__conserlarCastInstalado) {
+        console.log(
+          '[CONSERLAR CAST] Detector já instalado.'
+        );
+
+        return;
+      }
+
+      window.__conserlarCastInstalado = true;
+
+      var ultimoUrl = '';
+      var ultimoTipo = '';
+
+      /*
+       * ------------------------------------------------------------
+       * UTILITÁRIOS
+       * ------------------------------------------------------------
+       */
+
+      function normalizarUrl(url) {
+        if (!url) return '';
+
+        try {
+          return new URL(
+            url,
+            window.location.href
+          ).href;
+        } catch(e) {
+          return String(url);
+        }
+      }
+
+      function visivel(el) {
+        if (!el) return false;
+
+        try {
+          var style =
+            window.getComputedStyle(el);
+
+          var rect =
+            el.getBoundingClientRect();
+
+          return style.display !== 'none' &&
+                 style.visibility !== 'hidden' &&
+                 parseFloat(
+                   style.opacity || '1'
+                 ) > 0 &&
+                 rect.width > 10 &&
+                 rect.height > 10;
+        } catch(e) {
+          return false;
+        }
+      }
+
+      function tamanhoVisivel(el) {
+        if (!el) return 0;
+
+        try {
+          var r =
+            el.getBoundingClientRect();
+
+          return Math.max(
+            0,
+            r.width * r.height
+          );
+        } catch(e) {
+          return 0;
+        }
+      }
+
+      function urlParecePagina(url) {
+        if (!url) return true;
+
+        var u =
+          url.toLowerCase();
+
+        if (
+          u.includes('/planilha') ||
+          u.includes('/planilhas') ||
+          u.includes('/spreadsheet') ||
+          u.includes('/document') ||
+          u.includes('/documento')
+        ) {
+          return true;
+        }
+
+        if (
+          u.includes('_page-') &&
+          !u.match(
+            /\.(mp4|webm|m3u8|jpg|jpeg|png|webp|gif)(\?|$)/i
+          )
+        ) {
+          return true;
+        }
+
+        if (
+          u.endsWith('.html') ||
+          u.endsWith('.htm') ||
+          u.endsWith('.php') ||
+          u.endsWith('.asp') ||
+          u.endsWith('.aspx')
+        ) {
+          return true;
+        }
+
+        return false;
+      }
+
+      function extrairUrlDoElemento(el) {
+        if (!el) return '';
+
+        var candidatos = [];
+
+        if (el.currentSrc) {
+          candidatos.push(
+            el.currentSrc
+          );
+        }
+
+        if (el.src) {
+          candidatos.push(
+            el.src
+          );
+        }
+
+        try {
+          var sources =
+            el.querySelectorAll(
+              'source'
+            );
+
+          for (
+            var i = 0;
+            i < sources.length;
+            i++
+          ) {
+            if (sources[i].src) {
+              candidatos.push(
+                sources[i].src
+              );
+            }
+
+            var ds =
+              sources[i].getAttribute(
+                'data-src'
+              );
+
+            if (ds) {
+              candidatos.push(ds);
+            }
+          }
+        } catch(e) {}
+
+        var atributos = [
+          'data-src',
+          'data-original',
+          'data-url',
+          'data-image',
+          'data-image-url',
+          'data-video',
+          'data-video-url',
+          'data-file',
+          'data-media',
+          'data-media-url'
+        ];
+
+        for (
+          var j = 0;
+          j < atributos.length;
+          j++
+        ) {
+          try {
+            var valor =
+              el.getAttribute(
+                atributos[j]
+              );
+
+            if (valor) {
+              candidatos.push(valor);
+            }
+          } catch(e) {}
+        }
+
+        for (
+          var k = 0;
+          k < candidatos.length;
+          k++
+        ) {
+          var url =
+            normalizarUrl(
+              candidatos[k]
+            );
+
+          if (!url) continue;
+
+          if (
+            url.indexOf('blob:') === 0
+          ) {
+            continue;
+          }
+
+          if (
+            urlParecePagina(url)
+          ) {
+            console.log(
+              '[CONSERLAR CAST] Ignorando URL que parece página:',
+              url
+            );
+
+            continue;
+          }
+
+          return url;
+        }
+
+        return '';
+      }
+
+      /*
+       * ------------------------------------------------------------
+       * ENCONTRAR VÍDEO REAL
+       * ------------------------------------------------------------
+       */
+
+      function encontrarVideoReal() {
+        var candidatos = [];
+
+        var videos =
+          document.querySelectorAll(
+            'video'
+          );
+
+        for (
+          var i = 0;
+          i < videos.length;
+          i++
+        ) {
+          var video = videos[i];
+
+          if (!visivel(video)) {
+            continue;
+          }
+
+          var url =
+            extrairUrlDoElemento(
+              video
+            );
+
+          if (!url) continue;
+
+          candidatos.push({
+            el: video,
+            url: url,
+            area:
+              tamanhoVisivel(video),
+            prioridade: 100
+          });
+        }
+
+        var mediaViewer =
+          document.getElementById(
+            'mediaViewer'
+          );
+
+        if (
+          mediaViewer &&
+          visivel(mediaViewer)
+        ) {
+          var urlViewer =
+            extrairUrlDoElemento(
+              mediaViewer
+            );
+
+          if (urlViewer) {
+            candidatos.push({
+              el: mediaViewer,
+              url: urlViewer,
+              area:
+                tamanhoVisivel(
+                  mediaViewer
+                ),
+              prioridade: 90
+            });
+          }
+        }
+
+        var wrapper =
+          document.getElementById(
+            'playerWrapper'
+          );
+
+        if (wrapper) {
+          var videosWrapper =
+            wrapper.querySelectorAll(
+              'video'
+            );
+
+          for (
+            var w = 0;
+            w < videosWrapper.length;
+            w++
+          ) {
+            var vw =
+              videosWrapper[w];
+
+            if (!visivel(vw)) {
+              continue;
+            }
+
+            var uw =
+              extrairUrlDoElemento(vw);
+
+            if (uw) {
+              candidatos.push({
+                el: vw,
+                url: uw,
+                area:
+                  tamanhoVisivel(vw),
+                prioridade: 110
+              });
+            }
+          }
+        }
+
+        if (
+          candidatos.length === 0
+        ) {
+          return null;
+        }
+
+        candidatos.sort(
+          function(a, b) {
+            if (
+              b.prioridade !==
+              a.prioridade
+            ) {
+              return (
+                b.prioridade -
+                a.prioridade
+              );
+            }
+
+            return b.area - a.area;
+          }
+        );
+
+        return candidatos[0];
+      }
+
+      /*
+       * ------------------------------------------------------------
+       * ENCONTRAR IMAGEM REAL
+       * ------------------------------------------------------------
+       */
+
+      function encontrarImagemReal() {
+        var candidatos = [];
+
+        var apostila =
+          document.getElementById(
+            'imagemApostila'
+          );
+
+        if (
+          apostila &&
+          visivel(apostila)
+        ) {
+          var urlApostila =
+            extrairUrlDoElemento(
+              apostila
+            );
+
+          if (urlApostila) {
+            candidatos.push({
+              el: apostila,
+              url: urlApostila,
+              area:
+                tamanhoVisivel(
+                  apostila
+                ),
+              prioridade: 200
+            });
+          }
+        }
+
+        var imagens =
+          document.querySelectorAll(
+            'img'
+          );
+
+        for (
+          var i = 0;
+          i < imagens.length;
+          i++
+        ) {
+          var img = imagens[i];
+
+          if (!visivel(img)) {
+            continue;
+          }
+
+          if (
+            tamanhoVisivel(img) < 5000
+          ) {
+            continue;
+          }
+
+          var url =
+            extrairUrlDoElemento(img);
+
+          if (!url) continue;
+
+          candidatos.push({
+            el: img,
+            url: url,
+            area:
+              tamanhoVisivel(img),
+            prioridade: 100
+          });
+        }
+
+        var elementos =
+          document.querySelectorAll('*');
+
+        for (
+          var j = 0;
+          j < elementos.length;
+          j++
+        ) {
+          var el =
+            elementos[j];
+
+          if (!visivel(el)) {
+            continue;
+          }
+
+          if (
+            tamanhoVisivel(el) < 10000
+          ) {
+            continue;
+          }
+
+          try {
+            var bg =
+              window.getComputedStyle(
+                el
+              ).backgroundImage;
+
+            if (
+              bg &&
+              bg !== 'none' &&
+              bg.indexOf(
+                'url('
+              ) !== -1
+            ) {
+              var match =
+                bg.match(
+                  /url\(["']?(.*?)["']?\)/
+                );
+
+              if (
+                match &&
+                match[1]
+              ) {
+                var bgUrl =
+                  normalizarUrl(
+                    match[1]
+                  );
+
+                if (
+                  bgUrl &&
+                  !urlParecePagina(
+                    bgUrl
+                  )
+                ) {
+                  candidatos.push({
+                    el: el,
+                    url: bgUrl,
+                    area:
+                      tamanhoVisivel(el),
+                    prioridade: 80
+                  });
+                }
+              }
+            }
+          } catch(e) {}
+        }
+
+        if (
+          candidatos.length === 0
+        ) {
+          return null;
+        }
+
+        candidatos.sort(
+          function(a, b) {
+            if (
+              b.prioridade !==
+              a.prioridade
+            ) {
+              return (
+                b.prioridade -
+                a.prioridade
+              );
+            }
+
+            return b.area - a.area;
+          }
+        );
+
+        return candidatos[0];
+      }
+
+      /*
+       * ------------------------------------------------------------
+       * DETECTOR PRINCIPAL
+       * ------------------------------------------------------------
+       */
+
+      function obterMidiaReal() {
+        var video =
+          encontrarVideoReal();
+
+        if (
+          video &&
+          video.url
+        ) {
+          return {
+            url: video.url,
+
+            titulo:
+              document.getElementById(
+                'aulaTitulo'
+              )?.innerText ||
+              document.title ||
+              'Aula Conserlar',
+
+            tipo: 'video',
+
+            abrirMenu: false
+          };
+        }
+
+        var imagem =
+          encontrarImagemReal();
+
+        if (
+          imagem &&
+          imagem.url
+        ) {
+          return {
+            url: imagem.url,
+
+            titulo:
+              document.getElementById(
+                'aulaTitulo'
+              )?.innerText ||
+              document.title ||
+              'Esquema Conserlar',
+
+            tipo: 'image',
+
+            abrirMenu: false
+          };
+        }
+
+        return {
+          url: '',
+          titulo: '',
+          tipo: '',
+          abrirMenu: false
+        };
+      }
+
+      /*
+       * ------------------------------------------------------------
+       * ENVIO PARA FLUTTER
+       * ------------------------------------------------------------
+       */
+
+      function enviarMidia(
+        abrirMenu
+      ) {
+        var info =
+          obterMidiaReal();
+
+        if (!info.url) {
+          console.log(
+            '[CONSERLAR CAST] Nenhuma mídia real encontrada.'
+          );
+
+          return;
+        }
+
+        if (
+          info.url === ultimoUrl &&
+          info.tipo === ultimoTipo &&
+          !abrirMenu
+        ) {
+          return;
+        }
+
+        ultimoUrl = info.url;
+        ultimoTipo = info.tipo;
+
+        info.abrirMenu =
+          !!abrirMenu;
+
+        console.log(
+          '[CONSERLAR CAST] MÍDIA REAL:',
+          info.tipo,
+          info.url
+        );
+
+        if (
+          window.AndroidCastBridge
+        ) {
+          window.AndroidCastBridge.postMessage(
+            JSON.stringify(info)
+          );
+        }
+      }
+
+      /*
+       * ------------------------------------------------------------
+       * BOTÃO FULLSCREEN
+       * ------------------------------------------------------------
+       */
+
+      setInterval(
+        function() {
+          var full =
+            document.getElementById(
+              'btnFull'
+            );
+
+          if (full) {
+            full.innerHTML =
+              '<i class="bi bi-fullscreen"></i> Full';
+
+            if (
+              !full.dataset.configurado
+            ) {
+              full.dataset.configurado =
+                'true';
+
+              full.onclick =
+                function(e) {
+                  e.preventDefault();
+
+                  window.location.href =
+                    'app://full_clicked';
+                };
+            }
+          }
+        },
+        300
+      );
+
+      /*
+       * ------------------------------------------------------------
+       * BOTÃO CAST
+       * ------------------------------------------------------------
+       */
+
+      setInterval(
+        function() {
+          var cast =
+            document.getElementById(
+              'btnCast'
+            );
+
+          if (cast) {
+            cast.classList.remove(
+              'd-none'
+            );
+
+            cast.innerHTML =
+              '<i class="bi bi-cast me-1"></i> Transmitir';
+
+            if (
+              !cast.dataset.configurado
+            ) {
+              cast.dataset.configurado =
+                'true';
+
+              cast.onclick =
+                function(e) {
+                  e.preventDefault();
+
+                  enviarMidia(true);
+                };
+            }
+          }
+        },
+        300
+      );
+
+      /*
+       * ------------------------------------------------------------
+       * MONITORAMENTO
+       * ------------------------------------------------------------
+       */
+
+      setInterval(
+        function() {
+          enviarMidia(false);
+        },
+        1000
+      );
+
+      /*
+       * ------------------------------------------------------------
+       * MUTATION OBSERVER
+       * ------------------------------------------------------------
+       */
+
+      try {
+        var observer =
+          new MutationObserver(
+            function() {
+              configurarMenuHorizontal();
+              enviarMidia(false);
+            }
+          );
+
+        if (document.body) {
+          observer.observe(
+            document.body,
+            {
+              childList: true,
+              subtree: true,
+              attributes: true,
+              attributeFilter: [
+                'src',
+                'data-src',
+                'data-image',
+                'data-url',
+                'class',
+                'style'
+              ]
+            }
+          );
+        }
+      } catch(e) {}
+
+      /*
+       * ------------------------------------------------------------
+       * EVENTOS DE VÍDEO
+       * ------------------------------------------------------------
+       */
+
+      document.addEventListener(
+        'loadedmetadata',
+        function() {
+          enviarMidia(false);
+        },
+        true
+      );
+
+      document.addEventListener(
+        'play',
+        function() {
+          enviarMidia(false);
+        },
+        true
+      );
+
+      console.log(
+        '[CONSERLAR] Configuração concluída.'
+      );
+
+    })();
+  ''');
+  }
+
+
+  /*
+   * ============================================================
+   * AIRPLAY
+   * ============================================================
+   */
+
+  void _acionarAirPlayNativo() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'O AirPlay é compatível apenas com dispositivos iOS/Apple.',
+        ),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+
+  /*
+   * ============================================================
+   * SERVIDOR LOCAL
+   * ============================================================
+   */
 
   Future<void> _iniciarServidorProxyLocal() async {
     if (_localProxyServer != null) return;
+
     final router = shelf_router.Router();
-    router.get('/proxy', (shelf.Request request) async {
-      final targetUrlStr = request.requestedUri.queryParameters['url'];
-      if (targetUrlStr == null || targetUrlStr.isEmpty) return shelf.Response.badRequest(body: 'URL não informada');
+
+    router.get('/proxy', (request) async {
+      final target = request.url.queryParameters['url'];
+
+      debugPrint('');
+      debugPrint('======================================');
+      debugPrint('PROXY REQUEST');
+      debugPrint('TARGET: $target');
+      debugPrint('======================================');
+
+      if (target == null || target.isEmpty) {
+        return shelf.Response.badRequest(
+          body: 'URL não informada',
+        );
+      }
+
       final client = http.Client();
+
       try {
-        final proxyReq = http.Request('GET', Uri.parse(targetUrlStr));
-        proxyReq.headers['Referer'] = 'https://aluno.conserlar.com';
-        proxyReq.headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1';
-        final streamedResponse = await client.send(proxyReq);
-        final bytes = await streamedResponse.stream.toBytes();
-        final contentType = streamedResponse.headers['content-type'] ?? 'application/octet-stream';
-        return shelf.Response(streamedResponse.statusCode, body: bytes, headers: {'Content-Type': contentType, 'Content-Length': bytes.length.toString(), 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-cache'});
+        final uri = Uri.parse(target);
+
+        final req = http.Request('GET', uri)
+          ..headers['Referer'] =
+              'https://aluno.conserlar.com/'
+          ..headers['User-Agent'] =
+              'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) '
+              'AppleWebKit/605.1.15 (KHTML, like Gecko) '
+              'Version/16.0 Mobile/15E148 Safari/604.1';
+
+        final response = await client.send(req);
+
+        debugPrint(
+          'PROXY STATUS: ${response.statusCode}',
+        );
+
+        debugPrint(
+          'PROXY CONTENT-TYPE: '
+              '${response.headers['content-type']}',
+        );
+
+        final bytes = await response.stream.toBytes();
+
+        debugPrint(
+          'PROXY SIZE: ${bytes.length} bytes',
+        );
+
+        if (response.statusCode < 200 ||
+            response.statusCode >= 300) {
+          debugPrint(
+            'PROXY ERRO SIZE: ${bytes.length}',
+          );
+
+          return shelf.Response(
+            response.statusCode,
+            body: bytes,
+            headers: {
+              'Content-Type':
+              response.headers['content-type'] ??
+                  'text/html',
+              'Access-Control-Allow-Origin': '*',
+            },
+          );
+        }
+
+        return shelf.Response(
+          response.statusCode,
+          body: bytes,
+          headers: {
+            'Content-Type':
+            response.headers['content-type'] ??
+                'application/octet-stream',
+            'Content-Length': bytes.length.toString(),
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-cache',
+          },
+        );
       } catch (e) {
-        return shelf.Response.internalServerError(body: e.toString());
+        debugPrint('PROXY EXCEPTION: $e');
+
+        return shelf.Response.internalServerError(
+          body: e.toString(),
+        );
       } finally {
         client.close();
       }
     });
+
+    router.get('/media/<id>', (request, id) async {
+      final file = _mediaFiles[id];
+
+      if (file == null || !await file.exists()) {
+        debugPrint('MEDIA NÃO ENCONTRADA: $id');
+
+        return shelf.Response.notFound(
+          'Mídia não encontrada',
+        );
+      }
+
+      final size = await file.length();
+      final range = request.headers['range'];
+
+      debugPrint(
+        'MEDIA REQUEST: ${request.method} '
+            '/media/$id Range=$range Size=$size',
+      );
+
+      final headers = {
+        'Content-Type': 'video/mp4',
+        'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': '*',
+        'Cache-Control': 'no-cache',
+      };
+
+      if (request.method == 'HEAD') {
+        return shelf.Response.ok(
+          null,
+          headers: {
+            ...headers,
+            'Content-Length': size.toString(),
+          },
+        );
+      }
+
+      if (range == null || !range.startsWith('bytes=')) {
+        return shelf.Response.ok(
+          file.openRead(),
+          headers: {
+            ...headers,
+            'Content-Length': size.toString(),
+          },
+        );
+      }
+
+      try {
+        final value = range.substring(6).split('-');
+
+        var start = int.tryParse(value[0]) ?? 0;
+
+        var end =
+        value.length > 1 && value[1].isNotEmpty
+            ? int.tryParse(value[1]) ?? size - 1
+            : size - 1;
+
+        if (start >= size) {
+          return shelf.Response(
+            416,
+            headers: {
+              ...headers,
+              'Content-Range': 'bytes */$size',
+            },
+          );
+        }
+
+        if (end >= size) {
+          end = size - 1;
+        }
+
+        if (end < start) {
+          end = size - 1;
+        }
+
+        final length = end - start + 1;
+
+        debugPrint(
+          'RANGE: $start-$end/$size',
+        );
+
+        return shelf.Response(
+          206,
+          body: file.openRead(start, end + 1),
+          headers: {
+            ...headers,
+            'Content-Length': length.toString(),
+            'Content-Range':
+            'bytes $start-$end/$size',
+          },
+        );
+      } catch (e) {
+        debugPrint('ERRO RANGE: $e');
+
+        return shelf.Response.badRequest(
+          body: 'Range inválido',
+        );
+      }
+    });
+
     try {
-      _localProxyServer = await shelf_io.serve(router.call, '0.0.0.0', _localProxyPort);
-    } catch (_) {}
+      _localProxyServer = await shelf_io.serve(
+        router.call,
+        '0.0.0.0',
+        _localProxyPort,
+      );
+
+      debugPrint(
+        'Servidor local: 0.0.0.0:$_localProxyPort',
+      );
+    } catch (e) {
+      debugPrint(
+        'Erro servidor local: $e',
+      );
+    }
   }
 
-  Future<String> _gerarUrlProxyLocalParaBunny(String urlOriginal) async {
-    await _iniciarServidorProxyLocal();
-    String localIp = '127.0.0.1';
+  /*
+   * ============================================================
+   * IP LOCAL
+   * ============================================================
+   */
+
+  Future<String> _obterIpLocal() async {
     try {
-      for (final interface in await NetworkInterface.list()) {
-        for (final addr in interface.addresses) {
-          if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
-            localIp = addr.address;
-            break;
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLoopback: false,
+      );
+
+      for (final i in interfaces) {
+        for (final a in i.addresses) {
+          final ip = a.address;
+
+          if (ip.startsWith('192.168.') ||
+              ip.startsWith('10.') ||
+              RegExp(
+                r'^172\.(1[6-9]|2[0-9]|3[0-1])\.',
+              ).hasMatch(ip)) {
+            debugPrint(
+              'IP LOCAL SELECIONADO: $ip',
+            );
+
+            return ip;
           }
         }
-        if (localIp != '127.0.0.1') break;
       }
-    } catch (_) {}
-    return 'http://$localIp:$_localProxyPort/proxy?url=${Uri.encodeComponent(urlOriginal)}';
+
+      for (final i in interfaces) {
+        for (final a in i.addresses) {
+          if (!a.isLoopback) {
+            return a.address;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint(
+        'Erro obtendo IP: $e',
+      );
+    }
+
+    return '127.0.0.1';
   }
 
-  Future<Uint8List> _converterImagemParaMp4(Uint8List imageBytes) async {
-    Directory? tempDir;
-    try {
-      tempDir = await Directory.systemTemp.createTemp('conserlar_cast_');
-      final inputFile = File('${tempDir.path}/imagem.jpg');
-      final outputFile = File('${tempDir.path}/imagem.mp4');
-      await inputFile.writeAsBytes(imageBytes, flush: true);
-      final command = '-y -loop 1 -i "${inputFile.path}" -t 2 -r 25 -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -c:v libx264 -preset ultrafast -tune stillimage -pix_fmt yuv420p -movflags +faststart "${outputFile.path}"';
-      final session = await FFmpegKit.execute(command);
-      if (!ReturnCode.isSuccess(await session.getReturnCode())) throw Exception('FFmpeg falhou');
-      return await outputFile.readAsBytes();
-    } finally {
-      if (tempDir != null) await tempDir.delete(recursive: true).catchError((_) {});
-    }
+  /*
+   * ============================================================
+   * PROXY BUNNY
+   * ============================================================
+   */
+
+  Future<String> _gerarUrlProxyLocalParaBunny(
+      String url,
+      ) async {
+    await _iniciarServidorProxyLocal();
+
+    final ip = await _obterIpLocal();
+
+    final proxyUrl =
+        'http://$ip:$_localProxyPort/proxy'
+        '?url=${Uri.encodeComponent(url)}';
+
+    debugPrint('');
+    debugPrint('======================================');
+    debugPrint('URL PROXY');
+    debugPrint(proxyUrl);
+    debugPrint('======================================');
+
+    return proxyUrl;
   }
+
+  /*
+   * ============================================================
+   * IMAGEM -> MP4
+   * ============================================================
+   */
+
+  Future<File> _converterImagemParaMp4(
+      Uint8List bytes,
+      ) async {
+    final dir =
+    await Directory.systemTemp.createTemp(
+      'conserlar_cast_',
+    );
+
+    final input =
+    File('${dir.path}/imagem.jpg');
+
+    final output =
+    File('${dir.path}/imagem.mp4');
+
+    await input.writeAsBytes(
+      bytes,
+      flush: true,
+    );
+
+    final command =
+        '-y '
+        '-loop 1 '
+        '-i "${input.path}" '
+        '-t 5 '
+        '-r 30 '
+        '-vf "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p" '
+        '-c:v libx264 '
+        '-profile:v baseline '
+        '-level 3.1 '
+        '-preset ultrafast '
+        '-pix_fmt yuv420p '
+        '-movflags +faststart '
+        '"${output.path}"';
+
+    final session =
+    await FFmpegKit.execute(command);
+
+    final code =
+    await session.getReturnCode();
+
+    if (!ReturnCode.isSuccess(code)) {
+      final logs =
+      await session.getAllLogsAsString();
+
+      await dir
+          .delete(recursive: true)
+          .catchError((_) {});
+
+      throw Exception(
+        'FFmpeg falhou:\n$logs',
+      );
+    }
+
+    if (!await output.exists() ||
+        await output.length() == 0) {
+      throw Exception(
+        'MP4 não foi criado corretamente.',
+      );
+    }
+
+    return output;
+  }
+
+  /*
+   * ============================================================
+   * PUBLICAR MP4 LOCAL
+   * ============================================================
+   */
+
+  Future<String> _publicarMp4ParaChromecast(
+      File file,
+      ) async {
+    await _iniciarServidorProxyLocal();
+
+    final ip = await _obterIpLocal();
+
+    final id =
+        '${DateTime.now().millisecondsSinceEpoch}_${file.hashCode}';
+
+    _mediaFiles[id] = file;
+
+    final url =
+        'http://$ip:$_localProxyPort/media/$id';
+
+    debugPrint('');
+    debugPrint('======================================');
+    debugPrint('CHROMECAST MP4');
+    debugPrint('IP: $ip');
+    debugPrint('ARQUIVO: ${file.path}');
+    debugPrint(
+      'TAMANHO: ${await file.length()} bytes',
+    );
+    debugPrint('URL: $url');
+    debugPrint('======================================');
+
+    return url;
+  }
+
+  /*
+   * ============================================================
+   * MENU CAST
+   * ============================================================
+   */
 
   void _mostrarMenuDispositivosTransmissao() {
-    if (_currentMediaUrl.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhuma mídia carregada!'), backgroundColor: Colors.red));
+    if (_currentMediaUrl.isEmpty ||
+        !_pareceSerMidiaValida(
+          _currentMediaUrl,
+          _currentMediaType,
+        )) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Nenhuma mídia real carregada!',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+
       return;
     }
+
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          height: 380,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Transmitir Mídia na Rede', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                  IconButton(icon: const Icon(Icons.close, color: Colors.grey), onPressed: () => Navigator.pop(context)),
-                ],
-              ),
-              const Text('Selecione um aparelho:', style: TextStyle(color: Colors.grey, fontSize: 12)),
-              const Divider(color: Colors.grey),
-              Expanded(
-                child: _BonsoirDeviceListWidget(
-                  castService: _castService,
-                  onDeviceSelected: (device) async {
-                    Navigator.pop(context);
-                    await _enviarMidiaParaDispositivo(device);
-                  },
-                ),
-              ),
-              if (Platform.isIOS)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Color(0xFF198754)), minimumSize: const Size(double.infinity, 40)),
-                    icon: const Icon(Icons.airplay, color: Color(0xFF00E676)),
-                    label: const Text('Usar AirPlay Nativo (Apple TV)'),
-                    onPressed: () { Navigator.pop(context); _acionarAirPlayNativo(); },
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(16),
+        ),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        height: 380,
+        child: Column(
+          crossAxisAlignment:
+          CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment:
+              MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Transmitir',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-            ],
-          ),
-        );
-      },
+                IconButton(
+                  icon: const Icon(
+                    Icons.close,
+                    color: Colors.grey,
+                  ),
+                  onPressed: () =>
+                      Navigator.pop(context),
+                ),
+              ],
+            ),
+            const Text(
+              'Selecione um aparelho:',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 12,
+              ),
+            ),
+            const Divider(
+              color: Colors.grey,
+            ),
+            Expanded(
+              child: _BonsoirDeviceListWidget(
+                castService: _castService,
+                onDeviceSelected:
+                    (device) async {
+                  Navigator.pop(context);
+
+                  await _enviarMidiaParaDispositivo(
+                    device,
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Future<void> _enviarMidiaParaDispositivo(CastDevice device) async {
+  /*
+ * ============================================================
+ * PAUSAR VÍDEO NA TV
+ * ============================================================
+ */
+
+  Future<void> _pausarVideoDaImagem(CastSession session) async {
     try {
-      final session = await _castService.connect(device);
-      final bool isImage = _currentMediaType == 'image';
+      debugPrint('[CAST] Aguardando o vídeo da imagem iniciar...');
+
+      await Future.delayed(const Duration(milliseconds: 800));
+
+      debugPrint('[CAST] Pausando o vídeo criado a partir da imagem...');
+
+      await session.pause();
+
+      debugPrint('[CAST] Imagem congelada na tela.');
+    } catch (e) {
+      debugPrint('[CAST] Erro ao pausar vídeo da imagem: $e');
+    }
+  }
+
+  /*
+ * ============================================================
+ * CAST
+ * ============================================================
+ */
+
+  Future<void> _enviarMidiaParaDispositivo(
+      CastDevice device,
+      ) async {
+    try {
+      debugPrint('');
+      debugPrint('======================================');
+      debugPrint('INICIANDO CAST');
+      debugPrint('DEVICE: ${device.name}');
+      debugPrint(
+        'IP: ${device.address.address}',
+      );
+      debugPrint('PORTA: ${device.port}');
+      debugPrint(
+        'TIPO: $_currentMediaType',
+      );
+      debugPrint(
+        'URL ORIGINAL: $_currentMediaUrl',
+      );
+      debugPrint('======================================');
+
+      /*
+     * SEGURANÇA:
+     * nunca transmitir URL inválida.
+     */
+      if (!_pareceSerMidiaValida(
+        _currentMediaUrl,
+        _currentMediaType,
+      )) {
+        throw Exception(
+          'A URL capturada não é uma mídia válida: '
+              '$_currentMediaUrl',
+        );
+      }
+
+      /*
+     * ==========================================================
+     * CONECTAR AO DISPOSITIVO
+     * ==========================================================
+     */
+
+      final session =
+      await _castService.connect(device);
+
+      final isImage =
+          _currentMediaType == 'image';
+
+      /*
+     * ==========================================================
+     * IMAGEM
+     * ==========================================================
+     */
+
       if (isImage) {
-        final imageProxyUrl = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
-        final imageResponse = await http.get(Uri.parse(imageProxyUrl));
-        final mp4Bytes = await _converterImagemParaMp4(imageResponse.bodyBytes);
-        final mediaSource = MediaSource.bytes(mp4Bytes, contentType: 'video/mp4');
-        final imageMedia = CastMedia.source(mediaSource, type: CastMediaType.mp4, fileExtension: '.mp4', title: _currentMediaTitle.trim().isNotEmpty ? _currentMediaTitle.trim() : 'Esquema Conserlar');
-        await session.loadMedia(imageMedia);
-        try {
-          await session.stateStream.firstWhere((state) => state == SessionState.playing).timeout(const Duration(seconds: 5));
-          await session.pause();
-        } catch (_) {}
+        /*
+       * IMPORTANTE:
+       *
+       * Se já existe um vídeo sendo reproduzido na TV,
+       * pausa imediatamente antes de preparar a imagem.
+       */
+       // await _pausarVideoNaTv();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Preparando imagem...',
+              ),
+            ),
+          );
+        }
+
+        /*
+       * ========================================================
+       * BAIXAR IMAGEM REAL
+       * ========================================================
+       */
+
+        debugPrint(
+          'BAIXANDO IMAGEM REAL: '
+              '$_currentMediaUrl',
+        );
+
+        final proxyUrl =
+        await _gerarUrlProxyLocalParaBunny(
+          _currentMediaUrl,
+        );
+
+        debugPrint(
+          'URL PROXY DA IMAGEM:',
+        );
+
+        debugPrint(proxyUrl);
+
+        final response =
+        await http.get(
+          Uri.parse(proxyUrl),
+        );
+
+        debugPrint(
+          'IMAGEM HTTP: '
+              '${response.statusCode}',
+        );
+
+        debugPrint(
+          'IMAGEM CONTENT-TYPE: '
+              '${response.headers['content-type']}',
+        );
+
+        debugPrint(
+          'IMAGEM BYTES: '
+              '${response.bodyBytes.length}',
+        );
+
+        if (response.statusCode != 200 ||
+            response.bodyBytes.isEmpty) {
+          throw Exception(
+            'Erro baixando imagem: '
+                'HTTP ${response.statusCode}',
+          );
+        }
+
+        /*
+       * ========================================================
+       * CONVERTER IMAGEM PARA MP4
+       * ========================================================
+       */
+
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Convertendo imagem para vídeo...',
+              ),
+            ),
+          );
+        }
+
+        debugPrint(
+          '[CAST] Convertendo imagem para MP4...',
+        );
+
+        final mp4 =
+        await _converterImagemParaMp4(
+          response.bodyBytes,
+        );
+
+        debugPrint(
+          '[CAST] MP4 criado:',
+        );
+
+        debugPrint(mp4.path);
+
+        debugPrint(
+          '[CAST] Tamanho MP4: '
+              '${await mp4.length()} bytes',
+        );
+
+        /*
+       * ========================================================
+       * PUBLICAR MP4 NA REDE LOCAL
+       * ========================================================
+       */
+
+        final mediaUrl =
+        await _publicarMp4ParaChromecast(
+          mp4,
+        );
+
+        debugPrint(
+          '[CAST] MP4 disponível em:',
+        );
+
+        debugPrint(mediaUrl);
+
+        /*
+       * ========================================================
+       * CARREGAR IMAGEM NA TV
+       * ========================================================
+       */
+
+        debugPrint(
+          '[CAST] Carregando imagem convertida na TV...',
+        );
+
+        await session.loadMedia(
+          CastMedia(
+            url: mediaUrl,
+            title:
+            _currentMediaTitle
+                .trim()
+                .isNotEmpty
+                ? _currentMediaTitle
+                .trim()
+                : 'Esquema Conserlar',
+            type: CastMediaType.mp4,
+          ),
+        );
+
+        debugPrint(
+          '[CAST] Imagem carregada na TV.',
+        );
+
+        await _pausarVideoDaImagem(session);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Imagem transmitida com sucesso!',
+              ),
+              backgroundColor:
+              Color(0xFF00C853),
+            ),
+          );
+        }
+
         return;
       }
-      final videoProxyUrl = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
-      final videoMedia = CastMedia(url: videoProxyUrl, title: _currentMediaTitle.trim().isNotEmpty ? _currentMediaTitle.trim() : 'Aula Conserlar', type: CastMediaType.mp4);
-      await session.loadMedia(videoMedia);
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro na transmissão: $e'), backgroundColor: Colors.red));
+
+      /*
+     * ==========================================================
+     * VÍDEO
+     * ==========================================================
+     */
+
+      debugPrint(
+        '[CAST] Preparando vídeo...',
+      );
+
+      final videoUrl =
+      await _gerarUrlProxyLocalParaBunny(
+        _currentMediaUrl,
+      );
+
+      debugPrint('');
+      debugPrint('======================================');
+      debugPrint('VIDEO CAST URL:');
+      debugPrint(videoUrl);
+      debugPrint('======================================');
+
+      /*
+     * ==========================================================
+     * CARREGAR VÍDEO NA TV
+     * ==========================================================
+     */
+
+      await session.loadMedia(
+        CastMedia(
+          url: videoUrl,
+          title:
+          _currentMediaTitle
+              .trim()
+              .isNotEmpty
+              ? _currentMediaTitle
+              .trim()
+              : 'Aula Conserlar',
+          type: CastMediaType.mp4,
+        ),
+      );
+
+      debugPrint(
+        '[CAST] Vídeo carregado na TV.',
+      );
+    } catch (e, stack) {
+      debugPrint('');
+      debugPrint('======================================');
+      debugPrint('ERRO CAST');
+      debugPrint('$e');
+      debugPrint('$stack');
+      debugPrint('======================================');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(
+          SnackBar(
+            content: Text(
+              'Erro na transmissão: $e',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
+
+
+  /*
+   * ============================================================
+   * FULLSCREEN
+   * ============================================================
+   */
 
   void _toggleFullInterno() {
-    setState(() => _isFullScreen = !_isFullScreen);
+    setState(() {
+      _isFullScreen = !_isFullScreen;
+    });
+
     if (_isFullScreen) {
-      SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-      controller.runJavaScript('const wrapper = document.getElementById("playerWrapper"); if(wrapper) { wrapper.style.setProperty("position", "fixed", "important"); wrapper.style.setProperty("top", "0", "important"); wrapper.style.setProperty("left", "0", "important"); wrapper.style.setProperty("width", "100vw", "important"); wrapper.style.setProperty("height", "100vh", "important"); wrapper.style.setProperty("z-index", "999999", "important"); }');
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.immersiveSticky,
+      );
+
+      controller.runJavaScript('''
+        var wrapper=document.getElementById('playerWrapper');
+        var viewer=document.getElementById('mediaViewer');
+        var apostila=document.getElementById('imagemApostila');
+
+        if(wrapper){
+          wrapper.style.setProperty('position','fixed','important');
+          wrapper.style.setProperty('top','0','important');
+          wrapper.style.setProperty('left','0','important');
+          wrapper.style.setProperty('width','100vw','important');
+          wrapper.style.setProperty('height','100vh','important');
+          wrapper.style.setProperty('z-index','9999999','important');
+          wrapper.style.setProperty('background','#000','important');
+          wrapper.style.setProperty('margin','0','important');
+          wrapper.style.setProperty('border-radius','0','important');
+        }
+
+        if(viewer){
+          viewer.style.setProperty('width','100%','important');
+          viewer.style.setProperty('height','100%','important');
+        }
+
+        if(apostila){
+          apostila.style.setProperty('width','100%','important');
+          apostila.style.setProperty('height','100%','important');
+          apostila.style.setProperty('object-fit','contain','important');
+        }
+
+        if(!document.getElementById('btnSairFullscreenFlutuante')){
+          var b=document.createElement('button');
+
+          b.id='btnSairFullscreenFlutuante';
+
+          b.innerHTML=
+            '<i class="bi bi-x-lg me-1"></i> Sair';
+
+          b.style.cssText=
+            'position:fixed!important;' +
+            'top:15px!important;' +
+            'right:15px!important;' +
+            'z-index:10000000!important;' +
+            'background:rgba(220,53,69,.95)!important;' +
+            'color:white!important;' +
+            'border:1px solid rgba(255,255,255,.4)!important;' +
+            'padding:8px 16px!important;' +
+            'font-weight:bold!important;' +
+            'border-radius:6px!important;' +
+            'cursor:pointer!important;';
+
+          b.onclick=function(e){
+            e.preventDefault();
+
+            window.location.href=
+              'app://exit_full_clicked';
+          };
+
+          document.body.appendChild(b);
+        }
+      ''');
     } else {
-      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-      controller.runJavaScript('const wrapper = document.getElementById("playerWrapper"); if(wrapper) wrapper.style.cssText = "";');
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
+
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.edgeToEdge,
+      );
+
+      controller.runJavaScript('''
+        var wrapper=document.getElementById('playerWrapper');
+        var viewer=document.getElementById('mediaViewer');
+        var apostila=document.getElementById('imagemApostila');
+
+        if(wrapper) wrapper.style.cssText='';
+        if(viewer) viewer.style.cssText='';
+        if(apostila) apostila.style.cssText='';
+
+        var b=
+          document.getElementById(
+            'btnSairFullscreenFlutuante'
+          );
+
+        if(b) b.remove();
+      ''');
     }
   }
 
-  void _acionarAirPlayNativo() async {
-    if (_currentMediaUrl.isEmpty) return;
-    try {
-      final urlProxyLocal = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
-      await FlutterIosAirplay.url(url: urlProxyLocal);
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao iniciar AirPlay: $e'), backgroundColor: Colors.red));
-    }
-  }
+  /*
+   * ============================================================
+   * PARAR CAST
+   * ============================================================
+   */
 
   void _pararTransmissaoNaTv() async {
-    try { await _castService.activeSession?.disconnect(); } catch (_) {}
+    try {
+      await _castService.activeSession?.disconnect();
+    } catch (_) {}
   }
 
+  /*
+   * ============================================================
+   * LIFECYCLE
+   * ============================================================
+   */
+
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    setState(() { _conteudoVisivel = (state == AppLifecycleState.resumed); });
+  void didChangeAppLifecycleState(
+      AppLifecycleState state,
+      ) {
+    setState(() {
+      _conteudoVisivel =
+          state == AppLifecycleState.resumed;
+    });
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _localProxyServer?.close(force: true);
-    SystemChrome.setPreferredOrientations(DeviceOrientation.values);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    WidgetsBinding.instance.removeObserver(
+      this,
+    );
+
+    _localProxyServer?.close(
+      force: true,
+    );
+
+    for (final file in _mediaFiles.values) {
+      try {
+        if (file.parent.existsSync()) {
+          file.parent.deleteSync(
+            recursive: true,
+          );
+        }
+      } catch (_) {}
+    }
+
+    _mediaFiles.clear();
+
+    SystemChrome.setPreferredOrientations(
+      DeviceOrientation.values,
+    );
+
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.edgeToEdge,
+    );
+
     super.dispose();
   }
+
+  /*
+   * ============================================================
+   * BUILD
+   * ============================================================
+   */
 
   @override
   Widget build(BuildContext context) {
@@ -1164,8 +3263,24 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
       body: SafeArea(
         child: Stack(
           children: [
-            if (_conteudoVisivel) WebViewWidget(controller: controller)
-            else Container(color: Colors.black, child: const Center(child: Text('CONTEÚDO PROTEGIDO', style: TextStyle(color: Color(0xFF7F8C8D), fontSize: 14, fontWeight: FontWeight.bold))))
+            if (_conteudoVisivel)
+              WebViewWidget(
+                controller: controller,
+              )
+            else
+              Container(
+                color: Colors.black,
+                child: const Center(
+                  child: Text(
+                    'CONTEÚDO PROTEGIDO',
+                    style: TextStyle(
+                      color: Color(0xFF7F8C8D),
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -1173,92 +3288,207 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura> with WidgetsB
   }
 }
 
-class _BonsoirDeviceListWidget extends StatefulWidget {
+/*
+ * ==============================================================
+ * DISCOVERY CHROMECAST
+ * ==============================================================
+ */
+
+class _BonsoirDeviceListWidget
+    extends StatefulWidget {
   final CastService castService;
   final Function(CastDevice) onDeviceSelected;
-  const _BonsoirDeviceListWidget({required this.castService, required this.onDeviceSelected});
+
+  const _BonsoirDeviceListWidget({
+    required this.castService,
+    required this.onDeviceSelected,
+  });
+
   @override
-  State<_BonsoirDeviceListWidget> createState() => _BonsoirDeviceListWidgetState();
+  State<_BonsoirDeviceListWidget> createState() =>
+      _BonsoirDeviceListWidgetState();
 }
 
-class _BonsoirDeviceListWidgetState extends State<_BonsoirDeviceListWidget> {
+class _BonsoirDeviceListWidgetState
+    extends State<_BonsoirDeviceListWidget> {
   BonsoirDiscovery? _chromecastDiscovery;
+
   final List<CastDevice> _foundDevices = [];
+
   bool _isSearching = true;
 
   @override
   void initState() {
     super.initState();
+
     _startDiscoveryUnified();
   }
 
   void _startDiscoveryUnified() async {
-    // Inicializa o Bonsoir para varrer Chromecast no iOS de forma nativa
-    _chromecastDiscovery = BonsoirDiscovery(type: '_googlecast._tcp');
+    _chromecastDiscovery =
+        BonsoirDiscovery(
+          type: '_googlecast._tcp',
+        );
+
     await _chromecastDiscovery!.initialize();
-    _chromecastDiscovery!.eventStream!.listen((event) {
-      if (event is BonsoirDiscoveryServiceFoundEvent) {
-        event.service?.resolve(_chromecastDiscovery!.serviceResolver);
-      } else if (event is BonsoirDiscoveryServiceResolvedEvent) {
-        final resolvedService = event.service;
-        if (resolvedService != null && resolvedService.hostAddresses != null) {
-          String? ipv4Address;
-          for (var addr in resolvedService.hostAddresses!) {
-            if (!addr.contains(':') && addr.split('.').length == 4) { ipv4Address = addr; break; }
+
+    _chromecastDiscovery!
+        .eventStream!
+        .listen((event) {
+      if (event
+      is BonsoirDiscoveryServiceFoundEvent) {
+        event.service?.resolve(
+          _chromecastDiscovery!.serviceResolver,
+        );
+      } else if (event
+      is BonsoirDiscoveryServiceResolvedEvent) {
+        final service = event.service;
+
+        if (service?.hostAddresses == null) {
+          return;
+        }
+
+        String? ip;
+
+        for (final addr
+        in service!.hostAddresses!) {
+          if (!addr.contains(':') &&
+              addr.split('.').length == 4) {
+            ip = addr;
+            break;
           }
-          if (ipv4Address != null) {
-            String deviceName = resolvedService.name.contains('.') ? resolvedService.name.split('.').first : resolvedService.name;
-            final device = CastDevice(id: resolvedService.name, name: deviceName, address: InternetAddress(ipv4Address), port: resolvedService.port, protocol: CastProtocol.chromecast);
-            if (!_foundDevices.any((d) => d.address.address == device.address.address) && mounted) {
-              setState(() { _foundDevices.add(device); _isSearching = false; });
-            }
-          }
+        }
+
+        if (ip == null) return;
+
+        final name =
+        service.name.contains('.')
+            ? service.name
+            .split('.')
+            .first
+            : service.name;
+
+        final device = CastDevice(
+          id: service.name,
+          name: name,
+          address: InternetAddress(ip),
+          port: service.port,
+          protocol:
+          CastProtocol.chromecast,
+        );
+
+        if (!_foundDevices.any(
+              (d) =>
+          d.address.address == ip,
+        ) &&
+            mounted) {
+          setState(() {
+            _foundDevices.add(device);
+            _isSearching = false;
+          });
         }
       }
     });
+
     await _chromecastDiscovery!.start();
   }
 
   @override
   void dispose() {
     _chromecastDiscovery?.stop();
+
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Unifica a listagem utilizando tanto o Bonsoir (essencial pro iOS achar Chromecast na rede local) quanto o nativo do CastService
     return StreamBuilder<List<CastDevice>>(
-      stream: widget.castService.startDiscovery(),
+      stream:
+      widget.castService.startDiscovery(),
       builder: (context, snapshot) {
-        final List<CastDevice> devices = [];
+        final devices =
+        <CastDevice>[];
+
         if (snapshot.hasData) {
           devices.addAll(snapshot.data!);
         }
-        for (var d in _foundDevices) {
-          if (!devices.any((existing) => existing.address.address == d.address.address)) {
+
+        for (final d in _foundDevices) {
+          if (!devices.any(
+                (x) =>
+            x.address.address ==
+                d.address.address,
+          )) {
             devices.add(d);
           }
         }
 
         if (devices.isEmpty) {
-          return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            const CircularProgressIndicator(color: Color(0xFF00E676)),
-            const SizedBox(height: 12),
-            Text(_isSearching ? "Procurando aparelhos na rede..." : "Nenhum dispositivo encontrado", style: const TextStyle(color: Colors.grey, fontSize: 13)),
-          ]));
+          return Center(
+            child: Column(
+              mainAxisAlignment:
+              MainAxisAlignment.center,
+              children: [
+                const CircularProgressIndicator(
+                  color: Color(0xFF00E676),
+                ),
+                const SizedBox(
+                  height: 12,
+                ),
+                Text(
+                  _isSearching
+                      ? 'Procurando aparelhos na rede...'
+                      : 'Nenhum dispositivo encontrado',
+                  style:
+                  const TextStyle(
+                    color: Colors.grey,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          );
         }
 
         return ListView.builder(
           itemCount: devices.length,
-          itemBuilder: (context, index) {
-            final device = devices[index];
+          itemBuilder:
+              (context, index) {
+            final device =
+            devices[index];
+
             return ListTile(
-              leading: const Icon(Icons.cast, color: Color(0xFF00E676)),
-              title: Text(device.name, style: const TextStyle(color: Colors.white)),
-              subtitle: Text("Protocolo: ${device.protocol.name.toUpperCase()} • IP: ${device.address.address}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
-              trailing: const Icon(Icons.cast_connected, color: Colors.white70),
-              onTap: () => widget.onDeviceSelected(device),
+              leading: const Icon(
+                Icons.cast,
+                color: Color(0xFF00E676),
+              ),
+              title: Text(
+                device.name,
+                style:
+                const TextStyle(
+                  color: Colors.white,
+                ),
+              ),
+              subtitle: Text(
+                'Protocolo: '
+                    '${device.protocol.name.toUpperCase()} '
+                    '• IP: '
+                    '${device.address.address}',
+                style:
+                const TextStyle(
+                  color: Colors.grey,
+                  fontSize: 11,
+                ),
+              ),
+              trailing:
+              const Icon(
+                Icons.cast_connected,
+                color: Colors.white70,
+              ),
+              onTap: () =>
+                  widget.onDeviceSelected(
+                    device,
+                  ),
             );
           },
         );
