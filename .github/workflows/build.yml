@@ -18,7 +18,6 @@ jobs:
           cache: true
 
       - name: Install Dependencies
-        uses: subosito/flutter-action/flutter-pub@v2 # Alternativa ou run: flutter pub get
         run: flutter pub get
 
       # 1. Configurar o Keychain e o Certificado
