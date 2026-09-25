@@ -79,6 +79,15 @@
         <string>_dlna._tcp</string>
     </array>
 
+    <!-- Exceções de Segurança de Transporte (Libera HTTP Local para o Proxy do Chromecast) -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+
     <!-- Autorização para abrir os Ajustes do iOS a partir do app -->
     <key>LSApplicationQueriesSchemes</key>
     <array>
