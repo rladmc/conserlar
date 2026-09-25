@@ -2300,12 +2300,11 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
     final router = shelf_router.Router();
 
     router.get('/proxy', (request) async {
-      final target = request.url.queryParameters['url'];
+      var target = request.url.queryParameters['url'];
 
       debugPrint('');
       debugPrint('======================================');
-      debugPrint('PROXY REQUEST');
-      debugPrint('TARGET: $target');
+      debugPrint('PROXY REQUEST ORIGINAL: $target');
       debugPrint('======================================');
 
       if (target == null || target.isEmpty) {
@@ -2314,74 +2313,71 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
         );
       }
 
+      // SE FOR O EMBED DO BUNNY, CONVERTEMOS PARA O LINK DO VÍDEO ANTES DO PROXY BUSCAR
+      if (target.contains('mediadelivery.net/embed/')) {
+        try {
+          final uriTarget = Uri.parse(target);
+          final segments = uriTarget.pathSegments;
+          if (segments.length >= 3) {
+            final libraryId = segments[1];
+            final videoId = segments[2];
+
+            // O servidor aponta para o .mp4 da CDN, mas quem vai buscar
+            // injetando o Referer é o próprio servidor local!
+            target = 'https://vz-84a4a5f4-d42.b-cdn.net/$videoId/play_360p.mp4';
+            debugPrint('PROXY BUNNY CONVERTIDO INTERNAMENTE PARA: $target');
+          }
+        } catch (e) {
+          debugPrint('ERRO CONVERSÃO BUNNY: $e');
+        }
+      }
+
       final client = http.Client();
 
       try {
         final uri = Uri.parse(target);
 
+        // O SERVIDOR LOCAL APLICA O REFERER AQUI AO CHAMAR A CDN DO BUNNY
         final req = http.Request('GET', uri)
-          ..headers['Referer'] =
-              'https://aluno.conserlar.com/'
+          ..headers['Referer'] = 'https://aluno.conserlar.com/'
           ..headers['User-Agent'] =
               'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) '
               'AppleWebKit/605.1.15 (KHTML, like Gecko) '
               'Version/16.0 Mobile/15E148 Safari/604.1';
 
-        final response = await client.send(req);
-
-        debugPrint(
-          'PROXY STATUS: ${response.statusCode}',
-        );
-
-        debugPrint(
-          'PROXY CONTENT-TYPE: '
-              '${response.headers['content-type']}',
-        );
-
-        final bytes = await response.stream.toBytes();
-
-        debugPrint(
-          'PROXY SIZE: ${bytes.length} bytes',
-        );
-
-        if (response.statusCode < 200 ||
-            response.statusCode >= 300) {
-          debugPrint(
-            'PROXY ERRO SIZE: ${bytes.length}',
-          );
-
-          return shelf.Response(
-            response.statusCode,
-            body: bytes,
-            headers: {
-              'Content-Type':
-              response.headers['content-type'] ??
-                  'text/html',
-              'Access-Control-Allow-Origin': '*',
-            },
-          );
+        // Se o Chromecast mandou um header Range (pedindo pedaços do vídeo), repassamos para a CDN
+        if (request.headers.containsKey('range')) {
+          req.headers['Range'] = request.headers['range']!;
         }
 
+        final response = await client.send(req);
+
+        debugPrint('PROXY STATUS: ${response.statusCode}');
+        debugPrint('PROXY CONTENT-TYPE: ${response.headers['content-type']}');
+
+        // Repassamos o stream do vídeo com o cabeçalho correto para o Chromecast
         return shelf.Response(
           response.statusCode,
-          body: bytes,
+          body: response.stream,
           headers: {
-            'Content-Type':
-            response.headers['content-type'] ??
-                'application/octet-stream',
-            'Content-Length': bytes.length.toString(),
+            'Content-Type': response.headers['content-type'] ?? 'video/mp4',
             'Access-Control-Allow-Origin': '*',
+            'Accept-Ranges': 'bytes',
+            if (response.headers.containsKey('content-range'))
+              'Content-Range': response.headers['content-range']!,
+            if (response.headers.containsKey('content-length'))
+              'Content-Length': response.headers['content-length']!,
             'Cache-Control': 'no-cache',
           },
         );
       } catch (e) {
         debugPrint('PROXY EXCEPTION: $e');
-
         return shelf.Response.internalServerError(
           body: e.toString(),
         );
       } finally {
-        client.close();
+        // Nota: se fechar o client imediatamente no finally com streams longos do Chromecast,
+        // pode cortar o vídeo. O ideal é deixar o client fechar com o encerramento do stream ou gerenciar o ciclo.
       }
     });
 
@@ -2808,256 +2804,109 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       debugPrint('======================================');
       debugPrint('INICIANDO CAST');
       debugPrint('DEVICE: ${targetDevice.name}');
-      debugPrint(
-        'IP: ${targetDevice.address.address}',
-      );
+      debugPrint('IP: ${targetDevice.address.address}');
       debugPrint('PORTA: ${targetDevice.port}');
-      debugPrint(
-        'TIPO: $_currentMediaType',
-      );
-      debugPrint(
-        'URL ORIGINAL: $_currentMediaUrl',
-      );
+      debugPrint('TIPO: $_currentMediaType');
+      debugPrint('URL ORIGINAL: $_currentMediaUrl');
       debugPrint('======================================');
 
-      /*
-    * SEGURANÇA:
-    * nunca transmitir URL inválida.
-    */
-      if (!_pareceSerMidiaValida(
-        _currentMediaUrl,
-        _currentMediaType,
-      )) {
-        throw Exception(
-          'A URL capturada não é uma mídia válida: '
-              '$_currentMediaUrl',
-        );
+      if (!_pareceSerMidiaValida(_currentMediaUrl, _currentMediaType)) {
+        throw Exception('A URL capturada não é uma mídia válida: $_currentMediaUrl');
       }
 
-      /*
-    * ==========================================================
-    * CONECTAR AO DISPOSITIVO
-    * ==========================================================
-    */
-
-      final session =
-      await _castService.connect(targetDevice);
-
-      final isImage =
-          _currentMediaType == 'image';
+      final session = await _castService.connect(targetDevice);
+      final isImage = _currentMediaType == 'image';
 
       /*
-    * ==========================================================
-    * IMAGEM
-    * ==========================================================
-    */
-
+       * ==========================================================
+       * IMAGEM
+       * ==========================================================
+       */
       if (isImage) {
         if (!silencioso && mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Preparando imagem...',
-              ),
-            ),
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Preparando imagem...')),
           );
         }
 
-        /*
-      * ========================================================
-      * BAIXAR IMAGEM REAL
-      * ========================================================
-      */
+        final proxyUrl = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
+        final response = await http.get(Uri.parse(proxyUrl));
 
-        debugPrint(
-          'BAIXANDO IMAGEM REAL: '
-              '$_currentMediaUrl',
-        );
-
-        final proxyUrl =
-        await _gerarUrlProxyLocalParaBunny(
-          _currentMediaUrl,
-        );
-
-        debugPrint(
-          'URL PROXY DA IMAGEM:',
-        );
-
-        debugPrint(proxyUrl);
-
-        final response =
-        await http.get(
-          Uri.parse(proxyUrl),
-        );
-
-        debugPrint(
-          'IMAGEM HTTP: '
-              '${response.statusCode}',
-        );
-
-        debugPrint(
-          'IMAGEM CONTENT-TYPE: '
-              '${response.headers['content-type']}',
-        );
-
-        debugPrint(
-          'IMAGEM BYTES: '
-              '${response.bodyBytes.length}',
-        );
-
-        if (response.statusCode != 200 ||
-            response.bodyBytes.isEmpty) {
-          throw Exception(
-            'Erro baixando imagem: '
-                'HTTP ${response.statusCode}',
-          );
+        if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
+          throw Exception('Erro baixando imagem: HTTP ${response.statusCode}');
         }
-
-        /*
-      * ========================================================
-      * CONVERTER IMAGEM PARA MP4
-      * ========================================================
-      */
 
         if (!silencioso && mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Convertendo imagem para vídeo...',
-              ),
-            ),
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Convertendo imagem para vídeo...')),
           );
         }
 
-        debugPrint(
-          '[CAST] Convertendo imagem para MP4...',
-        );
-
-        final mp4 =
-        await _converterImagemParaMp4(
-          response.bodyBytes,
-        );
-
-        debugPrint(
-          '[CAST] MP4 criado:',
-        );
-
-        debugPrint(mp4.path);
-
-        debugPrint(
-          '[CAST] Tamanho MP4: '
-              '${await mp4.length()} bytes',
-        );
-
-        /*
-      * ========================================================
-      * PUBLICAR MP4 NA REDE LOCAL
-      * ========================================================
-      */
-
-        final mediaUrl =
-        await _publicarMp4ParaChromecast(
-          mp4,
-        );
-
-        debugPrint(
-          '[CAST] MP4 disponível em:',
-        );
-
-        debugPrint(mediaUrl);
-
-        /*
-      * ========================================================
-      * CARREGAR IMAGEM NA TV
-      * ========================================================
-      */
-
-        debugPrint(
-          '[CAST] Carregando imagem convertida na TV...',
-        );
+        final mp4 = await _converterImagemParaMp4(response.bodyBytes);
+        final mediaUrl = await _publicarMp4ParaChromecast(mp4);
 
         await session.loadMedia(
           CastMedia(
             url: mediaUrl,
-            title:
-            _currentMediaTitle
-                .trim()
-                .isNotEmpty
-                ? _currentMediaTitle
-                .trim()
-                : 'Esquema Conserlar',
+            title: _currentMediaTitle.trim().isNotEmpty ? _currentMediaTitle.trim() : 'Esquema Conserlar',
             type: CastMediaType.mp4,
           ),
-        );
-
-        debugPrint(
-          '[CAST] Imagem carregada na TV.',
         );
 
         await _pausarVideoDaImagem(session);
 
         if (!silencioso && mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(
+          ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                'Imagem transmitida com sucesso!',
-              ),
-              backgroundColor:
-              Color(0xFF00C853),
+              content: Text('Imagem transmitida com sucesso!'),
+              backgroundColor: Color(0xFF00C853),
             ),
           );
         }
-
         return;
       }
 
       /*
-    * ==========================================================
-    * VÍDEO
-    * ==========================================================
-    */
+       * ==========================================================
+       * VÍDEO (Com Proxy Local para injetar o Referer do Bunny)
+       * ==========================================================
+       */
+      debugPrint('[CAST] Preparando vídeo com proxy (Referer)...');
 
-      debugPrint(
-        '[CAST] Preparando vídeo...',
-      );
-
-      final videoUrl =
-      await _gerarUrlProxyLocalParaBunny(
-        _currentMediaUrl,
-      );
+      // Passa pelo proxy para garantir o Referer exigido pela CDN
+      final videoUrl = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
 
       debugPrint('');
       debugPrint('======================================');
-      debugPrint('VIDEO CAST URL:');
+      debugPrint('VIDEO CAST PROXY URL:');
       debugPrint(videoUrl);
       debugPrint('======================================');
 
-      /*
-    * ==========================================================
-    * CARREGAR VÍDEO NA TV
-    * ==========================================================
-    */
+      if (!silencioso && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Transmitindo vídeo para a TV...')),
+        );
+      }
 
       await session.loadMedia(
         CastMedia(
           url: videoUrl,
-          title:
-          _currentMediaTitle
-              .trim()
-              .isNotEmpty
-              ? _currentMediaTitle
-              .trim()
-              : 'Aula Conserlar',
+          title: _currentMediaTitle.trim().isNotEmpty ? _currentMediaTitle.trim() : 'Aula Conserlar',
           type: CastMediaType.mp4,
         ),
       );
 
-      debugPrint(
-        '[CAST] Vídeo carregado na TV.',
-      );
+      debugPrint('[CAST] Vídeo carregado na TV.');
+
+      if (!silencioso && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Vídeo transmitido com sucesso!'),
+            backgroundColor: Color(0xFF00C853),
+          ),
+        );
+      }
+
     } catch (e, stack) {
       debugPrint('');
       debugPrint('======================================');
@@ -3067,12 +2916,9 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       debugPrint('======================================');
 
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Erro na transmissão: $e',
-            ),
+            content: Text('Erro na transmissão: $e'),
             backgroundColor: Colors.red,
           ),
         );
