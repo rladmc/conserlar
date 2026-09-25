@@ -28,7 +28,6 @@ jobs:
           BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
           KEYCHAIN_PASSWORD: ${{ secrets.P12_PASSWORD }}
         run: |
-          # Criar variáveis de caminho
           CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
           PP_PATH=$RUNNER_TEMP/build_provision_profile.mobileprovision
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
@@ -50,21 +49,28 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/
 
-      # 2. Compilar o App para Dispositivo iOS com Assinatura Manual Forçada
+          # Extrair e exportar a UUID exata do provisioning profile instalado para uso no xcodebuild
+          PP_UUID=$(python3 -c "import plistlib, subprocess; 
+          p = subprocess.check_output(['security', 'cms', '-D', '-i', '$PP_PATH']);
+          pl = plistlib.loads(p);
+          print(pl['UUID'])")
+          echo "PP_UUID=$PP_UUID" >> $GITHUB_ENV
+          echo "Provisioning Profile UUID detectada: $PP_UUID"
+
+      # 2. Compilar o App para Dispositivo iOS com Assinatura Manual Forçada por UUID
       - name: Build iOS App for Device
         run: |
-          flutter build ios --release \
-            --extra-front-end-options=--no-sound-null-safety || true
+          flutter build ios --release --no-pub || true
           
-          # Forçar o Xcode a compilar usando o perfil manual injetado
           xcodebuild -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
             -sdk iphoneos \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM=Y3D2492V3P \
-            CODE_SIGN_IDENTITY="iPhone Developer: Rodrigo Cordova (53G46MXQG6)" \
-            PROVISIONING_PROFILE_SPECIFIER="Conserlar_Dev_Profile"
+            "CODE_SIGN_IDENTITY=iPhone Developer: Rodrigo Cordova (53G46MXQG6)" \
+            PROVISIONING_PROFILE="${{ env.PP_UUID }}" \
+            PROVISIONING_PROFILE_SPECIFIER=""
 
       # 3. Empacotar em formato IPA
       - name: Create IPA Package
