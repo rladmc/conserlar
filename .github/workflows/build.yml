@@ -50,9 +50,21 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/
 
-      # 2. Compilar o App para Dispositivo iOS
+      # 2. Compilar o App para Dispositivo iOS com Assinatura Manual Forçada
       - name: Build iOS App for Device
-        run: flutter build ios --release
+        run: |
+          flutter build ios --release \
+            --extra-front-end-options=--no-sound-null-safety || true
+          
+          # Forçar o Xcode a compilar usando o perfil manual injetado
+          xcodebuild -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=Y3D2492V3P \
+            CODE_SIGN_IDENTITY="iPhone Developer: Rodrigo Cordova (53G46MXQG6)" \
+            PROVISIONING_PROFILE_SPECIFIER="Conserlar_Dev_Profile"
 
       # 3. Empacotar em formato IPA
       - name: Create IPA Package
