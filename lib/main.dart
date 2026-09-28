@@ -1079,7 +1079,30 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
     controller.runJavaScript(r'''
     (function() {
       console.log('[CONSERLAR] Configurando WebView...');
+      
+      /*
+     * ============================================================
+     * FORÇAR VÍDEOS A RODAREM INLINE (SEM PLAYER NATIVO EXTERNO)
+     * ============================================================
+     */
+    function configurarVideosInline() {
+      var videos = document.querySelectorAll('video');
+      for (var i = 0; i < videos.length; i++) {
+        videos[i].setAttribute('playsinline', 'true');
+        videos[i].setAttribute('webkit-playsinline', 'true');
+        videos[i].setAttribute('x-webkit-airplay', 'allow');
+      }
 
+      var iframes = document.querySelectorAll('iframe');
+      for (var j = 0; j < iframes.length; j++) {
+        iframes[j].setAttribute('playsinline', 'true');
+        iframes[j].setAttribute('webkit-playsinline', 'true');
+      }
+    }
+
+    configurarVideosInline();
+    setInterval(configurarVideosInline, 2000);
+    
       /*
        * ============================================================
        * MENU HORIZONTAL
