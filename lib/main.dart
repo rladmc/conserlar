@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:lottie/lottie.dart';
 import 'package:dart_cast/dart_cast.dart';
@@ -863,7 +864,19 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 
     WidgetsBinding.instance.addObserver(this);
 
-    controller = WebViewController()
+    // Configuração adaptativa segura para suportar reprodução inline no iOS
+    late final PlatformWebViewControllerCreationParams params;
+
+    if (WebViewPlatform.instance is WebKitWebViewPlatform) {
+      params = WebKitWebViewControllerCreationParams(
+        allowsInlineMediaPlayback: true, // Impede o player nativo de tela cheia no iOS
+        mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
+      );
+    } else {
+      params = const PlatformWebViewControllerCreationParams();
+    }
+
+    controller = WebViewController.fromPlatformCreationParams(params)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent('iphoneconserlar2026')
       ..addJavaScriptChannel(
@@ -886,13 +899,6 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 
             if (!mounted) return;
 
-            /*
-       * IMPORTANTE:
-       *
-       * O JavaScript agora só deve mandar uma mídia real.
-       * Mesmo assim fazemos uma segunda validação no Dart
-       * para impedir que uma URL de página/planilha seja usada.
-       */
             if (!_pareceSerMidiaValida(url, tipo)) {
               debugPrint(
                 'URL IGNORADA: não parece ser uma mídia real: $url',
@@ -913,11 +919,9 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
             if ((data['abrirMenu'] ?? false) &&
                 _currentMediaUrl.isNotEmpty) {
               _mostrarMenuDispositivosTransmissao();
-            }
-            // AUTO-CAST: Se o usuário já conectou a TV antes e mudou de aula/esquema
-            else if (mudouDeMidia && _castService.activeSession != null) {
+            } else if (mudouDeMidia && _castService.activeSession != null) {
               debugPrint('[CAST] Nova mídia detectada com sessão ativa. Disparando Auto-Cast...');
-              _enviarMidiaParaDispositivo(null, true); // true = modo silencioso (sem popups)
+              _enviarMidiaParaDispositivo(null, true);
             }
           } catch (e) {
             debugPrint('ERRO BRIDGE: $e');
@@ -1080,28 +1084,67 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
     (function() {
       console.log('[CONSERLAR] Configurando WebView...');
       
-      /*
+     /*
      * ============================================================
      * FORÇAR VÍDEOS A RODAREM INLINE (SEM PLAYER NATIVO EXTERNO)
      * ============================================================
      */
     function configurarVideosInline() {
-      var videos = document.querySelectorAll('video');
-      for (var i = 0; i < videos.length; i++) {
-        videos[i].setAttribute('playsinline', 'true');
-        videos[i].setAttribute('webkit-playsinline', 'true');
-        videos[i].setAttribute('x-webkit-airplay', 'allow');
+      // 1. Seleciona todos os iframes (onde o player da Bunny geralmente vive)
+      var iframes = document.querySelectorAll('iframe');
+      for (var i = 0; i < iframes.length; i++) {
+        var iframe = iframes[i];
+        // Adiciona os atributos obrigatórios para inline no iframe
+        iframe.setAttribute('playsinline', 'true');
+        iframe.setAttribute('webkit-playsinline', 'true');
+        // Garante que o sandbox permite scripts e same-origin para o player funcionar
+        var sandbox = iframe.getAttribute('sandbox') || '';
+        if (sandbox.indexOf('allow-scripts') === -1) {
+           iframe.setAttribute('sandbox', sandbox + ' allow-scripts allow-same-origin allow-presentation allow-forms allow-popups');
+        }
+        
+        // TENTA ACESSAR O CONTEÚDO DO IFRAME (se for do mesmo domínio)
+        try {
+           var innerDoc = iframe.contentDocument || iframe.contentWindow.document;
+           if (innerDoc) {
+               var innerVideos = innerDoc.querySelectorAll('video');
+               for (var v = 0; v < innerVideos.length; v++) {
+                   innerVideos[v].setAttribute('playsinline', 'true');
+                   innerVideos[v].setAttribute('webkit-playsinline', 'true');
+               }
+           }
+        } catch(e) { console.log('Cross-origin iframe, não foi possível acessar o vídeo interno.'); }
       }
 
-      var iframes = document.querySelectorAll('iframe');
-      for (var j = 0; j < iframes.length; j++) {
-        iframes[j].setAttribute('playsinline', 'true');
-        iframes[j].setAttribute('webkit-playsinline', 'true');
+      // 2. Seleciona todas as tags <video> diretas na página
+      var videos = document.querySelectorAll('video');
+      for (var j = 0; j < videos.length; j++) {
+        var video = videos[j];
+        video.setAttribute('playsinline', 'true');
+        video.setAttribute('webkit-playsinline', 'true');
+        video.setAttribute('x-webkit-airplay', 'allow');
+        
+        // Garante que o controle de tela cheia seja desabilitado se o player nativo tentar forçar
+        video.controls = false; // Importante: remove os controles nativos do iOS/Safari
+        
+        // Força o tamanho para preencher o contêiner
+        video.style.width = '100% !important';
+        video.style.height = '100% !important';
+        video.style.objectFit = 'contain'; // Ou 'cover', dependendo do seu layout
       }
+      
+      // 3. Esconde qualquer botão de "Full Screen" nativo que o Safari possa adicionar
+      var styleFs = document.createElement('style');
+      styleFs.innerHTML = 'video::-webkit-media-controls-fullscreen-button { display: none !important; }';
+      document.head.appendChild(styleFs);
     }
 
     configurarVideosInline();
-    setInterval(configurarVideosInline, 2000);
+    // Roda várias vezes para garantir que o script pegue o player da Bunny, que pode demorar a carregar
+    setTimeout(configurarVideosInline, 500);
+    setTimeout(configurarVideosInline, 1500);
+    setTimeout(configurarVideosInline, 3000);
+    setInterval(configurarVideosInline, 5000); // Monitoramento contínuo
     
       /*
        * ============================================================
