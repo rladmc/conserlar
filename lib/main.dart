@@ -2453,30 +2453,25 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
             const Divider(
               color: Colors.grey,
             ),
-            
-            // SE FOR IOS: Exibe a opção de AirPlay tratada
+
+            // SE FOR IOS: Exibe o botão AirPlay limpo
             if (Platform.isIOS) ...[
               ListTile(
                 onTap: () async {
-                  // 1. Executa o tratamento da URL (Bunny / Apostila / Planilha) PRIMEIRO
                   await _enviarMidiaParaAirPlay();
-
-                  // Opcional: Se quiser que o modal feche ou aguarde o usuário tocar no ícone nativo
                 },
                 leading: const Icon(Icons.airplay, color: Colors.blueAccent),
                 title: const Text(
-                  'Transmitir via AirPlay',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                  'AirPlay',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                 ),
-                subtitle: const Text(
-                  'Toque para preparar a mídia e abrir o AirPlay',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-                trailing: const SizedBox(
-                  width: 50,
+                trailing: SizedBox(
+                  width: 60,
                   height: 50,
-                  child: AirPlayIconButton(
-                    color: Colors.blueAccent,
+                  child: AirPlayRoutePickerView(
+                    tintColor: Colors.blueAccent,
+                    activeTintColor: Colors.greenAccent,
+                    backgroundColor: Colors.transparent,
                   ),
                 ),
               ),
