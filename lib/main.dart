@@ -1146,6 +1146,30 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
     setTimeout(configurarVideosInline, 3000);
     setInterval(configurarVideosInline, 5000); // Monitoramento contínuo
     
+    /*
+    * ============================================================
+    * HABILITAR ZOOM POR PINÇA (IOS / ANDROID)
+    * ============================================================
+    */
+    function liberarZoomPinça() {
+      var meta = document.querySelector('meta[name="viewport"]');
+      if (!meta) {
+        meta = document.createElement('meta');
+        meta.name = 'viewport';
+        document.head.appendChild(meta);
+      }
+      meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes');
+
+      var elementosZoom = document.querySelectorAll('#imagemApostila, #mediaViewer, img, video, iframe');
+      for (var k = 0; k < elementosZoom.length; k++) {
+        elementosZoom[k].style.setProperty('touch-action', 'manipulation', 'important');
+        elementosZoom[k].style.setProperty('-webkit-user-select', 'text', 'important');
+      }
+    }
+
+    liberarZoomPinça();
+    setTimeout(liberarZoomPinça, 1000);
+    
       /*
        * ============================================================
        * MENU HORIZONTAL
