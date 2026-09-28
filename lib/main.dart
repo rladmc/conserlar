@@ -2791,15 +2791,14 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 */
 
   Future<void> _enviarMidiaParaDispositivo(
-      [CastDevice? device, bool silencioso = false]
-      ) async {
+      [CastDevice? device, bool silencioso = false]) async {
     try {
       final targetDevice = device ?? _castService.activeSession?.device;
       if (targetDevice == null) return;
 
       debugPrint('');
       debugPrint('======================================');
-      debugPrint('INICIANDO CAST');
+      debugPrint('INICIANDO CAST (DIRETO BUNNY CDN)');
       debugPrint('DEVICE: ${targetDevice.name}');
       debugPrint('IP: ${targetDevice.address.address}');
       debugPrint('PORTA: ${targetDevice.port}');
@@ -2807,132 +2806,89 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       debugPrint('URL ORIGINAL: $_currentMediaUrl');
       debugPrint('======================================');
 
-      if (!_pareceSerMidiaValida(_currentMediaUrl, _currentMediaType)) {
-        throw Exception('A URL capturada não é uma mídia válida: $_currentMediaUrl');
+      String urlFinalParaCast = _currentMediaUrl;
+
+      // Se for o embed do Bunny, convertemos direto para o link limpo do MP4
+      if (urlFinalParaCast.contains('mediadelivery.net/embed/')) {
+        try {
+          final uriTarget = Uri.parse(urlFinalParaCast);
+          final segments = uriTarget.pathSegments;
+          if (segments.length >= 3) {
+            final videoId = segments[2];
+            urlFinalParaCast = 'https://vz-84a4a5f4-d42.b-cdn.net/$videoId/play_360p.mp4';
+            debugPrint('BUNNY CONVERTIDO DIRETAMENTE PARA: $urlFinalParaCast');
+          }
+        } catch (e) {
+          debugPrint('ERRO AO CONVERTER URL DO BUNNY: $e');
+        }
       }
 
+      debugPrint('URL DIRETA FINAL PARA O CAST: $urlFinalParaCast');
+
+      // Validação flexível que aceita o CDN direto do Bunny ou a regra padrão
+      bool urlValida = urlFinalParaCast.contains('b-cdn.net') ||
+          _pareceSerMidiaValida(urlFinalParaCast, _currentMediaType);
+
+      if (!urlValida) {
+        throw Exception('A URL tratada não é uma mídia válida: $urlFinalParaCast');
+      }
+
+      // Conecta ao dispositivo de Cast
       final session = await _castService.connect(targetDevice);
-      setState(() {
-        _isPlaying = true;
-      });
-      final isImage = _currentMediaType == 'image';
 
-      /*
-       * ==========================================================
-       * IMAGEM
-       * ==========================================================
-       */
-      if (isImage) {
-        if (!silencioso && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Preparando imagem...')),
-          );
-        }
-
-        final proxyUrl = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
-        final response = await http.get(Uri.parse(proxyUrl));
-
-        if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
-          throw Exception('Erro baixando imagem: HTTP ${response.statusCode}');
-        }
-
-        if (!silencioso && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Convertendo imagem para vídeo...')),
-          );
-        }
-
-        final mp4 = await _converterImagemParaMp4(response.bodyBytes);
-        final mediaUrl = await _publicarMp4ParaChromecast(mp4);
-
-        final tituloFinal = _currentMediaTitle.trim().isNotEmpty
-            ? '${_currentMediaTitle.trim()} - Conserlar'
-            : 'Esquema Conserlar';
-
-        await session.loadMedia(
-          CastMedia(
-            url: mediaUrl,
-            title: tituloFinal,
-            type: CastMediaType.mp4,
-          ),
-        );
-
-        await _pausarVideoDaImagem(session);
-
-        if (!silencioso && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Imagem transmitida com sucesso!'),
-              backgroundColor: Color(0xFF00C853),
-            ),
-          );
-        }
-        return;
-      }
-
-      /*
-       * ==========================================================
-       * VÍDEO (Com Proxy Local para injetar o Referer do Bunny)
-       * ==========================================================
-       */
-      debugPrint('[CAST] Preparando vídeo com proxy (Referer)...');
-
-      final videoUrl = await _gerarUrlProxyLocalParaBunny(_currentMediaUrl);
-
-      debugPrint('');
-      debugPrint('======================================');
-      debugPrint('VIDEO CAST PROXY URL:');
-      debugPrint(videoUrl);
-      debugPrint('======================================');
-
-      if (!silencioso && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Transmitindo vídeo para a TV...')),
-        );
-      }
-
-      final tituloVideoFinal = _currentMediaTitle.trim().isNotEmpty
-          ? '${_currentMediaTitle.trim()} - Conserlar'
-          : 'Aula Conserlar';
-
+      // =========================================================================
+      // DISPARO USANDO O OBJETIVO CastMedia DO package:dart_cast
+      // =========================================================================
       await session.loadMedia(
         CastMedia(
-          url: videoUrl,
-          title: tituloVideoFinal,
+          url: urlFinalParaCast,
           type: CastMediaType.mp4,
+          title: _currentMediaTitle.isNotEmpty ? _currentMediaTitle : 'Aula Conserlar',
         ),
       );
 
-      debugPrint('[CAST] Vídeo carregado na TV.');
+      // Atualiza o estado para exibir o overlay e os controles na tela
+      setState(() {
+        _isPlaying = true;
+      });
 
-      if (!silencioso && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Vídeo transmitido com sucesso!'),
-            backgroundColor: Color(0xFF00C853),
-          ),
-        );
+      // Injeta o script para ocultar os elementos web e exibir a caixa preta de transmissão nos 3 alvos
+      controller.runJavaScript("""
+      var wrapper = document.getElementById('playerWrapper');
+      var viewer = document.getElementById('mediaViewer');
+      var apostila = document.getElementById('imagemApostila');
+
+      function aplicarFundoPreto(el) {
+        if (el) {
+          el.style.backgroundColor = 'black';
+          for (var i = 0; i < el.children.length; i++) {
+            el.children[i].style.display = 'none';
+          }
+          if (!el.querySelector('.cast-msg')) {
+            var msg = document.createElement('div');
+            msg.className = 'cast-msg';
+            msg.style.color = '#00C853';
+            msg.style.display = 'flex';
+            msg.style.justifyContent = 'center';
+            msg.style.alignItems = 'center';
+            msg.style.height = '100%';
+            msg.style.fontSize = '14px';
+            msg.style.fontWeight = 'bold';
+            msg.innerHTML = '📺 Transmitindo para a TV';
+            el.appendChild(msg);
+          }
+        }
       }
 
-    } catch (e, stack) {
-      debugPrint('');
-      debugPrint('======================================');
-      debugPrint('ERRO CAST');
-      debugPrint('$e');
-      debugPrint('$stack');
-      debugPrint('======================================');
+      aplicarFundoPreto(wrapper);
+      aplicarFundoPreto(viewer);
+      aplicarFundoPreto(apostila);
+    """);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro na transmissão: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+    } catch (e) {
+      debugPrint('FALHA DE TRANSMISSÃO DIRETA: $e');
     }
   }
-
 
   /*
    * ============================================================
@@ -3140,7 +3096,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
                 ),
               ),
 
-            
+
 
             // OVERLAY FLUTUANTE DE CONTROLE DO CHROMECAST (Fica por cima do fundo preto)
             if (estaTransmitindo)
