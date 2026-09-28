@@ -5,7 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   bonsoir_windows
   connectivity_plus
-  ffmpeg_kit_flutter_new
+  no_screenshot
   url_launcher_windows
 )
 

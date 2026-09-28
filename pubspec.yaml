@@ -45,10 +45,11 @@ dependencies:
   dlna_dart: ^0.0.5       # Para DLNA / UPnP (Smart TVs)
   flutter_ios_airplay: ^0.0.8
   bonsoir: ^7.1.5
-  shelf: ^1.4.1
-  shelf_router: ^1.1.4
-  http: ^1.2.0 # Para fazer a requisição para o Bunny CDN
-  ffmpeg_kit_flutter_new: ^4.6.2
+  #shelf: ^1.4.1
+  #shelf_router: ^1.1.4
+  #http: ^1.2.0 # Para fazer a requisição para o Bunny CDN
+  #ffmpeg_kit_flutter_new: ^4.6.2
+  no_screenshot: ^2.0.0 # ou a versão mais recente compatível
 
 dev_dependencies:
   flutter_test:

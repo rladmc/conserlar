@@ -8,6 +8,7 @@ import 'package:lottie/lottie.dart';
 import 'package:dart_cast/dart_cast.dart';
 import 'package:bonsoir/bonsoir.dart';
 import 'package:http/http.dart' as http;
+import 'package:no_screenshot/no_screenshot.dart';
 import 'package:flutter_ios_airplay/flutter_ios_airplay.dart';
 import 'package:dlna_dart/dlna.dart';
 
@@ -805,6 +806,8 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
     with WidgetsBindingObserver {
   late final WebViewController controller;
 
+  final _noScreenshot = NoScreenshot.instance;
+
   bool _conteudoVisivel = true;
   bool _isFullScreen = false;
   bool _isPlaying = true;
@@ -856,6 +859,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
   @override
   void initState() {
     super.initState();
+    _protegerTela();
 
     WidgetsBinding.instance.addObserver(this);
 
@@ -967,6 +971,13 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
         Uri.parse('https://aluno.conserlar.com'),
       );
   }
+
+  Future<void> _protegerTela() async {
+    // Desativa prints e gravações/espelhamentos no iOS e Android
+    bool result = await _noScreenshot.screenshotOff();
+    debugPrint('Proteção contra Print/AirPlay ativada: $result');
+  }
+
 
   /*
    * ============================================================
@@ -3205,3 +3216,4 @@ Future<void> ajustarVolumeCast(dynamic session, double novoVolume) async {
     debugPrint('ERRO VOLUME CAST: $e');
   }
 }
+

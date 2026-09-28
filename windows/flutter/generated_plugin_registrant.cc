@@ -8,7 +8,7 @@
 
 #include <bonsoir_windows/bonsoir_windows_plugin_c_api.h>
 #include <connectivity_plus/connectivity_plus_windows_plugin.h>
-#include <ffmpeg_kit_flutter_new/f_fmpeg_kit_flutter_plugin.h>
+#include <no_screenshot/no_screenshot_plugin_c_api.h>
 #include <url_launcher_windows/url_launcher_windows.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
@@ -16,8 +16,8 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("BonsoirWindowsPluginCApi"));
   ConnectivityPlusWindowsPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("ConnectivityPlusWindowsPlugin"));
-  FFmpegKitFlutterPluginRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("FFmpegKitFlutterPlugin"));
+  NoScreenshotPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("NoScreenshotPluginCApi"));
   UrlLauncherWindowsRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("UrlLauncherWindows"));
 }
