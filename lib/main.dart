@@ -2453,23 +2453,28 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
             const Divider(
               color: Colors.grey,
             ),
-
-            // SE FOR IOS: Exibe o botão/seletor nativo do AirPlay da Apple
+            
+            // SE FOR IOS: Exibe a opção de AirPlay tratada
             if (Platform.isIOS) ...[
               ListTile(
+                onTap: () async {
+                  // 1. Executa o tratamento da URL (Bunny / Apostila / Planilha) PRIMEIRO
+                  await _enviarMidiaParaAirPlay();
+
+                  // Opcional: Se quiser que o modal feche ou aguarde o usuário tocar no ícone nativo
+                },
                 leading: const Icon(Icons.airplay, color: Colors.blueAccent),
                 title: const Text(
-                  'Apple TV / AirPlay',
+                  'Transmitir via AirPlay',
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
                 ),
                 subtitle: const Text(
-                  'Transmitir via seletor nativo do iOS',
+                  'Toque para preparar a mídia e abrir o AirPlay',
                   style: TextStyle(color: Colors.grey, fontSize: 12),
                 ),
-                trailing: SizedBox(
+                trailing: const SizedBox(
                   width: 50,
                   height: 50,
-                  // Widget nativo do pacote que abre o menu AirPlay do iOS
                   child: AirPlayIconButton(
                     color: Colors.blueAccent,
                   ),
@@ -2503,6 +2508,76 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 * CAST
 * ============================================================
 */
+
+  Future<void> _enviarMidiaParaAirPlay() async {
+    if (_currentMediaUrl.isEmpty || !_pareceSerMidiaValida(_currentMediaUrl, _currentMediaType)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nenhuma mídia real carregada!'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    // 1. SE FOR IMAGEM (Apostila), TRATA PRIMEIRO IGUAL AO CAST!
+    if (_currentMediaType == 'image' || _currentMediaUrl.toLowerCase().endsWith('.jpg')) {
+      debugPrint('[AIRPLAY] IMAGEM DETECTADA. BUSCANDO LINK NA PLANILHA...');
+      await _processarETransmitirImagemParaAirPlay(_currentMediaUrl);
+      return;
+    }
+
+    String urlFinalParaAirPlay = _currentMediaUrl;
+
+    // 2. CONVERTE O EMBED DO BUNNY PARA O LINK DIRETO MP4 (Igualzinho ao Cast!)
+    if (urlFinalParaAirPlay.contains('mediadelivery.net/embed/')) {
+      try {
+        final uriTarget = Uri.parse(urlFinalParaAirPlay);
+        final segments = uriTarget.pathSegments;
+        if (segments.length >= 3) {
+          final videoId = segments[2];
+          urlFinalParaAirPlay = 'https://vz-84a4a5f4-d42.b-cdn.net/$videoId/play_360p.mp4';
+          debugPrint('[AIRPLAY] BUNNY CONVERTIDO DIRETAMENTE: $urlFinalParaAirPlay');
+        }
+      } catch (e) {
+        debugPrint('[AIRPLAY] ERRO AO CONVERTER URL DO BUNNY: $e');
+      }
+    }
+
+    // Agora abrimos o menu nativo do AirPlay já com a URL tratada pronta para o player do iOS assumir
+    // O AirPlayIconButton vai puxar a stream limpa do CDN que definimos!
+  }
+
+  Future<void> _processarETransmitirImagemParaAirPlay(String urlOriginal) async {
+    try {
+      final uri = Uri.parse(urlOriginal);
+      final segmentos = uri.pathSegments;
+      final nomeArquivoBruto = segmentos.isNotEmpty ? segmentos.last : '';
+      final nomeDecodificado = Uri.decodeComponent(nomeArquivoBruto);
+
+      final regExp = RegExp(r'(_page-.*|\.[^./\?]+)$', caseSensitive: false);
+      final nomeLimpo = nomeDecodificado.replaceAll(regExp, '').trim();
+
+      final endpoint = Uri.parse('https://script.google.com/macros/s/AKfycbxWOaNg2iYseVQOk2ceIqVzeBKcbBOaW-oMtFe22YVPrpmKww2NY6qroSpgQe6jNAhq/exec?action=get_cast_link&nome=$nomeLimpo');
+
+      final response = await http.get(endpoint);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final String? linkColunaH = data['link_cast'];
+
+        if (linkColunaH != null && linkColunaH.isNotEmpty) {
+          setState(() {
+            _currentMediaUrl = linkColunaH;
+            _currentMediaTitle = nomeLimpo;
+            _currentMediaType = 'video';
+          });
+
+          // Repete o fluxo já com o link corrigido da apostila
+          await _enviarMidiaParaAirPlay();
+        }
+      }
+    } catch (e) {
+      debugPrint('[AIRPLAY] ERRO AO PROCESSAR IMAGEM: $e');
+    }
+  }
 
   Future<void> _enviarMidiaParaDispositivo(
       [CastDevice? device, bool silencioso = false]) async {
@@ -3327,4 +3402,6 @@ Future<void> ajustarVolumeCast(dynamic session, double novoVolume) async {
     debugPrint('ERRO VOLUME CAST: $e');
   }
 }
+
+
 
