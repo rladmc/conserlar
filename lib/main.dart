@@ -10,7 +10,8 @@ import 'package:dart_cast/dart_cast.dart';
 import 'package:bonsoir/bonsoir.dart';
 import 'package:http/http.dart' as http;
 import 'package:no_screenshot/no_screenshot.dart';
-import 'package:flutter_ios_airplay/flutter_ios_airplay.dart';
+import 'package:flutter_to_airplay/flutter_to_airplay.dart';
+//import 'package:flutter_ios_airplay/flutter_ios_airplay.dart';
 import 'package:dlna_dart/dlna.dart';
 
 
@@ -2418,14 +2419,12 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       ),
       builder: (context) => Container(
         padding: const EdgeInsets.all(20),
-        height: 380,
+        height: Platform.isIOS ? 320 : 380, // Ajusta a altura se for iOS
         child: Column(
-          crossAxisAlignment:
-          CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment:
-              MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
                   'Transmitir',
@@ -2440,8 +2439,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
                     Icons.close,
                     color: Colors.grey,
                   ),
-                  onPressed: () =>
-                      Navigator.pop(context),
+                  onPressed: () => Navigator.pop(context),
                 ),
               ],
             ),
@@ -2455,11 +2453,36 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
             const Divider(
               color: Colors.grey,
             ),
+
+            // SE FOR IOS: Exibe o botão/seletor nativo do AirPlay da Apple
+            if (Platform.isIOS) ...[
+              ListTile(
+                leading: const Icon(Icons.airplay, color: Colors.blueAccent),
+                title: const Text(
+                  'Apple TV / AirPlay',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                ),
+                subtitle: const Text(
+                  'Transmitir via seletor nativo do iOS',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+                trailing: SizedBox(
+                  width: 50,
+                  height: 50,
+                  // Widget nativo do pacote que abre o menu AirPlay do iOS
+                  child: AirPlayIconButton(
+                    color: Colors.blueAccent,
+                  ),
+                ),
+              ),
+              const Divider(color: Colors.grey),
+            ],
+
+            // Lista padrão de dispositivos DLNA / Bonsoir (Chromecast/Outros)
             Expanded(
               child: _BonsoirDeviceListWidget(
                 castService: _castService,
-                onDeviceSelected:
-                    (device) async {
+                onDeviceSelected: (device) async {
                   Navigator.pop(context);
 
                   await _enviarMidiaParaDispositivo(
@@ -2474,27 +2497,6 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
     );
   }
 
-/*
-* ============================================================
-* PAUSAR VÍDEO NA TV
-* ============================================================
-*/
-
-  Future<void> _pausarVideoDaImagem(CastSession session) async {
-    try {
-      debugPrint('[CAST] Aguardando o vídeo da imagem iniciar...');
-
-      await Future.delayed(const Duration(milliseconds: 800));
-
-      debugPrint('[CAST] Pausando o vídeo criado a partir da imagem...');
-
-      await session.pause();
-
-      debugPrint('[CAST] Imagem congelada na tela.');
-    } catch (e) {
-      debugPrint('[CAST] Erro ao pausar vídeo da imagem: $e');
-    }
-  }
 
   /*
 * ============================================================
