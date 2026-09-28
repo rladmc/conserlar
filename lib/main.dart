@@ -2685,64 +2685,72 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       );
 
       controller.runJavaScript('''
-        var wrapper=document.getElementById('playerWrapper');
-        var viewer=document.getElementById('mediaViewer');
-        var apostila=document.getElementById('imagemApostila');
+      var wrapper=document.getElementById('playerWrapper');
+      var viewer=document.getElementById('mediaViewer');
+      var apostila=document.getElementById('imagemApostila');
 
-        if(wrapper){
-          wrapper.style.setProperty('position','fixed','important');
-          wrapper.style.setProperty('top','0','important');
-          wrapper.style.setProperty('left','0','important');
-          wrapper.style.setProperty('width','100vw','important');
-          wrapper.style.setProperty('height','100vh','important');
-          wrapper.style.setProperty('z-index','9999999','important');
-          wrapper.style.setProperty('background','#000','important');
-          wrapper.style.setProperty('margin','0','important');
-          wrapper.style.setProperty('border-radius','0','important');
-        }
+      if(wrapper){
+        wrapper.style.setProperty('position','fixed','important');
+        wrapper.style.setProperty('top','0','important');
+        wrapper.style.setProperty('left','0','important');
+        wrapper.style.setProperty('width','100vw','important');
+        wrapper.style.setProperty('height','100vh','important');
+        wrapper.style.setProperty('z-index','9999999','important');
+        wrapper.style.setProperty('background','#000','important');
+        wrapper.style.setProperty('margin','0','important');
+        wrapper.style.setProperty('border-radius','0','important');
+        // LIBERAÇÃO DE ZOOM E TOQUE NO WRAPPER
+        wrapper.style.setProperty('touch-action','pan-x pan-y pinch-zoom','important');
+        wrapper.style.setProperty('overflow','auto','important');
+      }
 
-        if(viewer){
-          viewer.style.setProperty('width','100%','important');
-          viewer.style.setProperty('height','100%','important');
-        }
+      if(viewer){
+        viewer.style.setProperty('width','100%','important');
+        viewer.style.setProperty('height','100%','important');
+        viewer.style.setProperty('object-fit','contain','important');
+        viewer.style.setProperty('touch-action','pan-x pan-y pinch-zoom','important');
+      }
 
-        if(apostila){
-          apostila.style.setProperty('width','100%','important');
-          apostila.style.setProperty('height','100%','important');
-          apostila.style.setProperty('object-fit','contain','important');
-        }
+      if(apostila){
+        apostila.style.setProperty('width','100%','important');
+        apostila.style.setProperty('height','100%','important');
+        apostila.style.setProperty('object-fit','contain','important');
+        // PERMITE ZOOM MÁXIMO E MOVIMENTAÇÃO NA APOSTILA
+        apostila.style.setProperty('touch-action','pan-x pan-y pinch-zoom','important');
+        apostila.style.setProperty('transform-origin','center center','important');
+      }
 
-        if(!document.getElementById('btnSairFullscreenFlutuante')){
-          var b=document.createElement('button');
+      if(!document.getElementById('btnSairFullscreenFlutuante')){
+        var b=document.createElement('button');
 
-          b.id='btnSairFullscreenFlutuante';
+        b.id='btnSairFullscreenFlutuante';
 
-          b.innerHTML=
-            '<i class="bi bi-x-lg me-1"></i> Sair';
+        b.innerHTML=
+          '<i class="bi bi-x-lg me-1"></i> Sair';
 
-          b.style.cssText=
-            'position:fixed!important;' +
-            'top:15px!important;' +
-            'right:15px!important;' +
-            'z-index:10000000!important;' +
-            'background:rgba(220,53,69,.95)!important;' +
-            'color:white!important;' +
-            'border:1px solid rgba(255,255,255,.4)!important;' +
-            'padding:8px 16px!important;' +
-            'font-weight:bold!important;' +
-            'border-radius:6px!important;' +
-            'cursor:pointer!important;';
+        b.style.cssText=
+          'position:fixed!important;' +
+          'top:15px!important;' +
+          'right:15px!important;' +
+          'z-index:10000000!important;' +
+          'background:rgba(220,53,69,.95)!important;' +
+          'color:white!important;' +
+          'border:1px solid rgba(255,255,255,.4)!important;' +
+          'padding:8px 16px!important;' +
+          'font-weight:bold!important;' +
+          'border-radius:6px!important;' +
+          'cursor:pointer!important;';
 
-          b.onclick=function(e){
-            e.preventDefault();
+        b.onclick=function(e){
+          e.preventDefault();
 
-            window.location.href=
-              'app://exit_full_clicked';
-          };
+          window.location.href=
+            'app://exit_full_clicked';
+        };
 
-          document.body.appendChild(b);
-        }
-      ''');
+        document.body.appendChild(b);
+      }
+    ''');
     } else {
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
@@ -2754,21 +2762,21 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       );
 
       controller.runJavaScript('''
-        var wrapper=document.getElementById('playerWrapper');
-        var viewer=document.getElementById('mediaViewer');
-        var apostila=document.getElementById('imagemApostila');
+      var wrapper=document.getElementById('playerWrapper');
+      var viewer=document.getElementById('mediaViewer');
+      var apostila=document.getElementById('imagemApostila');
 
-        if(wrapper) wrapper.style.cssText='';
-        if(viewer) viewer.style.cssText='';
-        if(apostila) apostila.style.cssText='';
+      if(wrapper) wrapper.style.cssText='';
+      if(viewer) viewer.style.cssText='';
+      if(apostila) apostila.style.cssText='';
 
-        var b=
-          document.getElementById(
-            'btnSairFullscreenFlutuante'
-          );
+      var b=
+        document.getElementById(
+          'btnSairFullscreenFlutuante'
+        );
 
-        if(b) b.remove();
-      ''');
+      if(b) b.remove();
+    ''');
     }
   }
 
