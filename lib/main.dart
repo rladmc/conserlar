@@ -2512,7 +2512,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       return;
     }
 
-    // 1. SE FOR IMAGEM (Apostila), TRATA PRIMEIRO IGUAL AO CAST!
+    // 1. Se for imagem (apostila), busca o link da Coluna H igual ao Cast
     if (_currentMediaType == 'image' || _currentMediaUrl.toLowerCase().endsWith('.jpg')) {
       debugPrint('[AIRPLAY] IMAGEM DETECTADA. BUSCANDO LINK NA PLANILHA...');
       await _processarETransmitirImagemParaAirPlay(_currentMediaUrl);
@@ -2521,7 +2521,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 
     String urlFinalParaAirPlay = _currentMediaUrl;
 
-    // 2. CONVERTE O EMBED DO BUNNY PARA O LINK DIRETO MP4 (Igualzinho ao Cast!)
+    // 2. Converte o embed do Bunny para o MP4 direto da CDN
     if (urlFinalParaAirPlay.contains('mediadelivery.net/embed/')) {
       try {
         final uriTarget = Uri.parse(urlFinalParaAirPlay);
@@ -2532,12 +2532,40 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
           debugPrint('[AIRPLAY] BUNNY CONVERTIDO DIRETAMENTE: $urlFinalParaAirPlay');
         }
       } catch (e) {
-        debugPrint('[AIRPLAY] ERRO AO CONVERTER URL DO BUNNY: $e');
+        debugPrint('[AIRPLAY] ERRO AO CONVERTER URL DO AIRPLAY: $e');
       }
     }
 
-    // Agora abrimos o menu nativo do AirPlay já com a URL tratada pronta para o player do iOS assumir
-    // O AirPlayIconButton vai puxar a stream limpa do CDN que definimos!
+    debugPrint('[AIRPLAY] ENVIANDO URL DIRETA PARA O PLAYER DO WEBVIEW: $urlFinalParaAirPlay');
+
+    // 3. INJETA A URL LIMPA NO PLAYER DO WEBVIEW E FORÇA O AIRPLAY NATIVO DO SAFARI A ASSUMIR
+    controller.runJavaScript('''
+    (function() {
+      var video = document.querySelector('video');
+      if (!video) {
+        // Se não houver tag video direta, cria uma temporária no DOM para o iOS puxar
+        video = document.createElement('video');
+        video.style.display = 'none';
+        document.body.appendChild(video);
+      }
+      
+      video.src = '$urlFinalParaAirPlay';
+      video.setAttribute('playsinline', 'true');
+      video.setAttribute('webkit-playsinline', 'true');
+      video.setAttribute('x-webkit-airplay', 'allow');
+      video.allowsExternalPlayback = true;
+      
+      video.load();
+      video.play().then(function() {
+        // Tenta abrir o menu de roteamento externo do Safari via JS se suportado
+        if (typeof video.webkitShowPlaybackTargetPicker === 'function') {
+          video.webkitShowPlaybackTargetPicker();
+        }
+      }).catch(function(err) {
+        console.log('[AIRPLAY JS] Erro ao dar play para cast:', err);
+      });
+    })();
+  ''');
   }
 
   Future<void> _processarETransmitirImagemParaAirPlay(String urlOriginal) async {
