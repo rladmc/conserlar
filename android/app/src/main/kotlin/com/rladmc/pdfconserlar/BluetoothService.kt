@@ -81,11 +81,8 @@ class BluetoothService : Service() {
 
     fun notifyActivities(message: String) {
         // Descomente ou ajuste conforme as classes forem migradas para Kotlin
-        // ControleMotorActivity.processarMensagem(message)
-        // MenuPrincipalActivity2.processarMensagem(message)
-        // testedeinterface.processarMensagem(message)
-        // TelaTesteActivity.processarMensagemPainel(message)
-        // TelaTesteActivity2.processarMensagemPainel(message)
+        ControleMotorActivity.processarMensagem(message)
+        MenuPrincipalActivity2.processarMensagem(message)
     }
 
     private inner class ConnectedThread(private val mmSocket: BluetoothSocket) : Thread() {

@@ -7,15 +7,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:lottie/lottie.dart';
 import 'package:dart_cast/dart_cast.dart';
 import 'package:bonsoir/bonsoir.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter_ios_airplay/flutter_ios_airplay.dart';
 import 'package:dlna_dart/dlna.dart';
-import 'package:shelf/shelf.dart' as shelf;
-import 'package:shelf/shelf_io.dart' as shelf_io;
-import 'package:shelf_router/shelf_router.dart' as shelf_router; // <--- ADICIONADO "as shelf_router" AQUI
-import 'package:http/http.dart' as http;
-import 'dart:typed_data';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 
 
 void main() async {
@@ -800,6 +794,7 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
 }
 
 class TelaDeEstudosSegura extends StatefulWidget {
+
   const TelaDeEstudosSegura({super.key});
 
   @override
@@ -812,6 +807,8 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 
   bool _conteudoVisivel = true;
   bool _isFullScreen = false;
+  bool _isPlaying = true;
+  bool _estaTransmitindoCast = false;
 
   String _currentMediaUrl = '';
   String _currentMediaTitle = '';
@@ -861,8 +858,6 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
     super.initState();
 
     WidgetsBinding.instance.addObserver(this);
-
-    _iniciarServidorProxyLocal();
 
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -2290,390 +2285,6 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 
   /*
    * ============================================================
-   * SERVIDOR LOCAL
-   * ============================================================
-   */
-
-  Future<void> _iniciarServidorProxyLocal() async {
-    if (_localProxyServer != null) return;
-
-    final router = shelf_router.Router();
-
-    router.get('/proxy', (request) async {
-      var target = request.url.queryParameters['url'];
-
-      debugPrint('');
-      debugPrint('======================================');
-      debugPrint('PROXY REQUEST ORIGINAL: $target');
-      debugPrint('======================================');
-
-      if (target == null || target.isEmpty) {
-        return shelf.Response.badRequest(
-          body: 'URL não informada',
-        );
-      }
-
-      // SE FOR O EMBED DO BUNNY, CONVERTEMOS PARA O LINK DO VÍDEO ANTES DO PROXY BUSCAR
-      if (target.contains('mediadelivery.net/embed/')) {
-        try {
-          final uriTarget = Uri.parse(target);
-          final segments = uriTarget.pathSegments;
-          if (segments.length >= 3) {
-            final libraryId = segments[1];
-            final videoId = segments[2];
-
-            // O servidor aponta para o .mp4 da CDN, mas quem vai buscar
-            // injetando o Referer é o próprio servidor local!
-            target = 'https://vz-84a4a5f4-d42.b-cdn.net/$videoId/play_360p.mp4';
-            debugPrint('PROXY BUNNY CONVERTIDO INTERNAMENTE PARA: $target');
-          }
-        } catch (e) {
-          debugPrint('ERRO CONVERSÃO BUNNY: $e');
-        }
-      }
-
-      final client = http.Client();
-
-      try {
-        final uri = Uri.parse(target);
-
-        // O SERVIDOR LOCAL APLICA O REFERER AQUI AO CHAMAR A CDN DO BUNNY
-        final req = http.Request('GET', uri)
-          ..headers['Referer'] = 'https://aluno.conserlar.com/'
-          ..headers['User-Agent'] =
-              'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) '
-              'AppleWebKit/605.1.15 (KHTML, like Gecko) '
-              'Version/16.0 Mobile/15E148 Safari/604.1';
-
-        // Se o Chromecast mandou um header Range (pedindo pedaços do vídeo), repassamos para a CDN
-        if (request.headers.containsKey('range')) {
-          req.headers['Range'] = request.headers['range']!;
-        }
-
-        final response = await client.send(req);
-
-        debugPrint('PROXY STATUS: ${response.statusCode}');
-        debugPrint('PROXY CONTENT-TYPE: ${response.headers['content-type']}');
-
-        // Repassamos o stream do vídeo com o cabeçalho correto para o Chromecast
-        return shelf.Response(
-          response.statusCode,
-          body: response.stream,
-          headers: {
-            'Content-Type': response.headers['content-type'] ?? 'video/mp4',
-            'Access-Control-Allow-Origin': '*',
-            'Accept-Ranges': 'bytes',
-            if (response.headers.containsKey('content-range'))
-              'Content-Range': response.headers['content-range']!,
-            if (response.headers.containsKey('content-length'))
-              'Content-Length': response.headers['content-length']!,
-            'Cache-Control': 'no-cache',
-          },
-        );
-      } catch (e) {
-        debugPrint('PROXY EXCEPTION: $e');
-        return shelf.Response.internalServerError(
-          body: e.toString(),
-        );
-      }
-    });
-
-    router.get('/media/<id>', (request, id) async {
-      final file = _mediaFiles[id];
-
-      if (file == null || !await file.exists()) {
-        debugPrint('MEDIA NÃO ENCONTRADA: $id');
-
-        return shelf.Response.notFound(
-          'Mídia não encontrada',
-        );
-      }
-
-      final size = await file.length();
-      final range = request.headers['range'];
-
-      debugPrint(
-        'MEDIA REQUEST: ${request.method} '
-            '/media/$id Range=$range Size=$size',
-      );
-
-      final headers = {
-        'Content-Type': 'video/mp4',
-        'Accept-Ranges': 'bytes',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': '*',
-        'Cache-Control': 'no-cache',
-      };
-
-      if (request.method == 'HEAD') {
-        return shelf.Response.ok(
-          null,
-          headers: {
-            ...headers,
-            'Content-Length': size.toString(),
-          },
-        );
-      }
-
-      if (range == null || !range.startsWith('bytes=')) {
-        return shelf.Response.ok(
-          file.openRead(),
-          headers: {
-            ...headers,
-            'Content-Length': size.toString(),
-          },
-        );
-      }
-
-      try {
-        final value = range.substring(6).split('-');
-
-        var start = int.tryParse(value[0]) ?? 0;
-
-        var end =
-        value.length > 1 && value[1].isNotEmpty
-            ? int.tryParse(value[1]) ?? size - 1
-            : size - 1;
-
-        if (start >= size) {
-          return shelf.Response(
-            416,
-            headers: {
-              ...headers,
-              'Content-Range': 'bytes */$size',
-            },
-          );
-        }
-
-        if (end >= size) {
-          end = size - 1;
-        }
-
-        if (end < start) {
-          end = size - 1;
-        }
-
-        final length = end - start + 1;
-
-        debugPrint(
-          'RANGE: $start-$end/$size',
-        );
-
-        return shelf.Response(
-          206,
-          body: file.openRead(start, end + 1),
-          headers: {
-            ...headers,
-            'Content-Length': length.toString(),
-            'Content-Range':
-            'bytes $start-$end/$size',
-          },
-        );
-      } catch (e) {
-        debugPrint('ERRO RANGE: $e');
-
-        return shelf.Response.badRequest(
-          body: 'Range inválido',
-        );
-      }
-    });
-
-    try {
-      _localProxyServer = await shelf_io.serve(
-        router.call,
-        '0.0.0.0',
-        _localProxyPort,
-      );
-
-      debugPrint(
-        'Servidor local: 0.0.0.0:$_localProxyPort',
-      );
-    } catch (e) {
-      debugPrint(
-        'Erro servidor local: $e',
-      );
-    }
-  }
-
-  /*
-   * ============================================================
-   * IP LOCAL
-   * ============================================================
-   */
-
-  Future<String> _obterIpLocal() async {
-    try {
-      final interfaces = await NetworkInterface.list(
-        type: InternetAddressType.IPv4,
-        includeLoopback: false,
-      );
-
-      for (final i in interfaces) {
-        for (final a in i.addresses) {
-          final ip = a.address;
-
-          if (ip.startsWith('192.168.') ||
-              ip.startsWith('10.') ||
-              RegExp(
-                r'^172\.(1[6-9]|2[0-9]|3[0-1])\.',
-              ).hasMatch(ip)) {
-            debugPrint(
-              'IP LOCAL SELECIONADO: $ip',
-            );
-
-            return ip;
-          }
-        }
-      }
-
-      for (final i in interfaces) {
-        for (final a in i.addresses) {
-          if (!a.isLoopback) {
-            return a.address;
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint(
-        'Erro obtendo IP: $e',
-      );
-    }
-
-    return '127.0.0.1';
-  }
-
-  /*
-   * ============================================================
-   * PROXY BUNNY
-   * ============================================================
-   */
-
-  Future<String> _gerarUrlProxyLocalParaBunny(
-      String url,
-      ) async {
-    await _iniciarServidorProxyLocal();
-
-    final ip = await _obterIpLocal();
-
-    final proxyUrl =
-        'http://$ip:$_localProxyPort/proxy'
-        '?url=${Uri.encodeComponent(url)}';
-
-    debugPrint('');
-    debugPrint('======================================');
-    debugPrint('URL PROXY');
-    debugPrint(proxyUrl);
-    debugPrint('======================================');
-
-    return proxyUrl;
-  }
-
-  /*
-   * ============================================================
-   * IMAGEM -> MP4
-   * ============================================================
-   */
-
-  Future<File> _converterImagemParaMp4(
-      Uint8List bytes,
-      ) async {
-    final dir =
-    await Directory.systemTemp.createTemp(
-      'conserlar_cast_',
-    );
-
-    final input =
-    File('${dir.path}/imagem.jpg');
-
-    final output =
-    File('${dir.path}/imagem.mp4');
-
-    await input.writeAsBytes(
-      bytes,
-      flush: true,
-    );
-
-    final command =
-        '-y '
-        '-loop 1 '
-        '-i "${input.path}" '
-        '-t 5 '
-        '-r 30 '
-        '-vf "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p" '
-        '-c:v libx264 '
-        '-profile:v baseline '
-        '-level 3.1 '
-        '-preset ultrafast '
-        '-pix_fmt yuv420p '
-        '-movflags +faststart '
-        '"${output.path}"';
-
-    final session =
-    await FFmpegKit.execute(command);
-
-    final code =
-    await session.getReturnCode();
-
-    if (!ReturnCode.isSuccess(code)) {
-      final logs =
-      await session.getAllLogsAsString();
-
-      await dir
-          .delete(recursive: true)
-          .catchError((_) {});
-
-      throw Exception(
-        'FFmpeg falhou:\n$logs',
-      );
-    }
-
-    if (!await output.exists() ||
-        await output.length() == 0) {
-      throw Exception(
-        'MP4 não foi criado corretamente.',
-      );
-    }
-
-    return output;
-  }
-
-  /*
-   * ============================================================
-   * PUBLICAR MP4 LOCAL
-   * ============================================================
-   */
-
-  Future<String> _publicarMp4ParaChromecast(
-      File file,
-      ) async {
-    await _iniciarServidorProxyLocal();
-
-    final ip = await _obterIpLocal();
-
-    final id =
-        '${DateTime.now().millisecondsSinceEpoch}_${file.hashCode}';
-
-    _mediaFiles[id] = file;
-
-    final url =
-        'http://$ip:$_localProxyPort/media/$id';
-
-    debugPrint('');
-    debugPrint('======================================');
-    debugPrint('CHROMECAST MP4');
-    debugPrint('IP: $ip');
-    debugPrint('ARQUIVO: ${file.path}');
-    debugPrint(
-      'TAMANHO: ${await file.length()} bytes',
-    );
-    debugPrint('URL: $url');
-    debugPrint('======================================');
-
-    return url;
-  }
-
-  /*
-   * ============================================================
    * MENU CAST
    * ============================================================
    */
@@ -2806,6 +2417,21 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       debugPrint('URL ORIGINAL: $_currentMediaUrl');
       debugPrint('======================================');
 
+      // =========================================================================
+      // 1. SE FOR IMAGEM (.jpg / apostila), INTERCEPTAMOS E BUSCAMOS O LINK NA COLUNA H
+      // =========================================================================
+      if (_currentMediaType == 'image' || _currentMediaUrl.toLowerCase().endsWith('.jpg')) {
+        debugPrint('IMAGEM DETECTADA. BUSCANDO LINK NA PLANILHA...');
+
+        // Chama a função que extrai o nome, bate no Apps Script e atualiza _currentMediaUrl
+        await _processarETransmitirImagem(_currentMediaUrl);
+
+        // Retorna aqui porque o próprio _processarETransmitirImagem já vai atualizar
+        // a URL e chamar o _enviarMidiaParaDispositivo novamente (ou seguir o fluxo).
+        //return;
+      }
+      // =========================================================================
+
       String urlFinalParaCast = _currentMediaUrl;
 
       // Se for o embed do Bunny, convertemos direto para o link limpo do MP4
@@ -2847,49 +2473,95 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
         ),
       );
 
-      // Atualiza o estado para exibir o overlay e os controles na tela
+      // FORÇA O REBUSTER DA TELA: O Flutter agora enxerga a sessão ativa e exibe o overlay
       setState(() {
         _isPlaying = true;
+        _estaTransmitindoCast = true;
       });
 
       // Injeta o script para ocultar os elementos web e exibir a caixa preta de transmissão nos 3 alvos
       controller.runJavaScript("""
-      var wrapper = document.getElementById('playerWrapper');
-      var viewer = document.getElementById('mediaViewer');
-      var apostila = document.getElementById('imagemApostila');
+  var wrapper = document.getElementById('playerWrapper');
+  var viewer = document.getElementById('mediaViewer');
+  var apostila = document.getElementById('imagemApostila');
 
-      function aplicarFundoPreto(el) {
-        if (el) {
-          el.style.backgroundColor = 'black';
-          for (var i = 0; i < el.children.length; i++) {
-            el.children[i].style.display = 'none';
-          }
-          if (!el.querySelector('.cast-msg')) {
-            var msg = document.createElement('div');
-            msg.className = 'cast-msg';
-            msg.style.color = '#00C853';
-            msg.style.display = 'flex';
-            msg.style.justifyContent = 'center';
-            msg.style.alignItems = 'center';
-            msg.style.height = '100%';
-            msg.style.fontSize = '14px';
-            msg.style.fontWeight = 'bold';
-            msg.innerHTML = '📺 Transmitindo para a TV';
-            el.appendChild(msg);
-          }
-        }
+  function aplicarFundoPreto(el) {
+    if (el) {
+      el.style.backgroundColor = 'black';
+      for (var i = 0; i < el.children.length; i++) {
+        el.children[i].style.display = 'none';
       }
+      if (!el.querySelector('.cast-msg')) {
+        var msg = document.createElement('div');
+        msg.className = 'cast-msg';
+        msg.style.color = '#00C853';
+        msg.style.display = 'flex';
+        msg.style.justifyContent = 'center';
+        msg.style.alignItems = 'center';
+        msg.style.height = '100%';
+        msg.style.fontSize = '14px';
+        msg.style.fontWeight = 'bold';
+        msg.innerHTML = '📺 Transmitindo para a TV';
+        el.appendChild(msg);
+      }
+    }
+  }
 
-      aplicarFundoPreto(wrapper);
-      aplicarFundoPreto(viewer);
-      aplicarFundoPreto(apostila);
-    """);
+  aplicarFundoPreto(wrapper);
+  aplicarFundoPreto(viewer);
+  aplicarFundoPreto(apostila);
+""");
 
     } catch (e) {
       debugPrint('FALHA DE TRANSMISSÃO DIRETA: $e');
     }
   }
 
+  Future<void> _processarETransmitirImagem(String urlOriginal) async {
+    try {
+      // 1. Extrai o nome do arquivo da URL e decodifica caracteres (%20 -> espaço)
+      final uri = Uri.parse(urlOriginal);
+      final segmentos = uri.pathSegments;
+      final nomeArquivoBruto = segmentos.isNotEmpty ? segmentos.last : '';
+      final nomeDecodificado = Uri.decodeComponent(nomeArquivoBruto);
+
+      // 2. REMOVE A EXTENSÃO E O SUFIXO DE PÁGINA (ex: _page-0001.jpg, .jpg, etc.)
+      // Essa regex remove tudo a partir de "_page" ou do último ponto "." da extensão
+      final regExp = RegExp(r'(_page-.*|\.[^./\?]+)$', caseSensitive: false);
+      final nomeLimpo = nomeDecodificado.replaceAll(regExp, '').trim();
+
+      debugPrint('NOME ORIGINAL: $nomeDecodificado');
+      debugPrint('NOME LIMPO PARA BUSCA NA COLUNA A: $nomeLimpo'); // Ex: INTERFACE WF106 SAMSUNG
+
+      // 3. Requisição para o Apps Script passando o nome limpo
+      final endpoint = Uri.parse('https://script.google.com/macros/s/AKfycbxWOaNg2iYseVQOk2ceIqVzeBKcbBOaW-oMtFe22YVPrpmKww2NY6qroSpgQe6jNAhq/exec?action=get_cast_link&nome=$nomeLimpo');
+
+      final response = await http.get(endpoint);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final String? linkColunaH = data['link_cast'];
+
+        if (linkColunaH != null && linkColunaH.isNotEmpty) {
+          debugPrint('LINK DA COLUNA H OBTIDO COM SUCESSO: $linkColunaH');
+
+          // Atualiza o estado com o link limpo do Bunny, o nome limpo para o título e o tipo video
+          setState(() {
+            _currentMediaUrl = linkColunaH;
+            _currentMediaTitle = nomeLimpo; // Vai exibir "INTERFACE WF106 SAMSUNG" no overlay!
+            _currentMediaType = 'video';
+          });
+
+          // Chama novamente o envio, agora com o link real do vídeo em mãos!
+          await _enviarMidiaParaDispositivo();
+        } else {
+          debugPrint('Nenhum link correspondente encontrado na Coluna A para: $nomeLimpo');
+        }
+      }
+    } catch (e) {
+      debugPrint('ERRO AO PROCESSAR IMAGEM PARA CAST: $e');
+    }
+  }
   /*
    * ============================================================
    * FULLSCREEN
@@ -3060,17 +2732,16 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
     super.dispose();
   }
 
-  /*
-   * ============================================================
-   * BUILD
-   * ============================================================
-   */
-  bool _isPlaying = true;
+  // ============================================================
+// BUILD (TRECHO CORRIGIDO DO STACK)
+// ============================================================
   @override
   Widget build(BuildContext context) {
     // Verifica se existe uma sessão de Chromecast ativa no momento
     final sessaoAtiva = _castService.activeSession;
-    final bool estaTransmitindo = sessaoAtiva != null;
+
+    // O overlay agora obedece à bandeira local para sumir instantaneamente no Stop
+    final bool estaTransmitindo = _estaTransmitindoCast && sessaoAtiva != null;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -3096,9 +2767,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
                 ),
               ),
 
-
-
-            // OVERLAY FLUTUANTE DE CONTROLE DO CHROMECAST (Fica por cima do fundo preto)
+            // OVERLAY FLUTUANTE DE CONTROLE DO CHROMECAST
             if (estaTransmitindo)
               CastControllerOverlay(
                 mediaTitle: _currentMediaTitle.isNotEmpty ? _currentMediaTitle : 'Aula Conserlar',
@@ -3106,17 +2775,22 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
                 onPlayPause: () async {
                   await alternarPlayPause(sessaoAtiva, _isPlaying);
                   setState(() {
-                    _isPlaying = !_isPlaying;
+                    _isPlaying = !_isPlaying; // Apenas inverte o ícone do botão
                   });
                 },
                 onStop: () async {
-                  await pararTransmissao(sessaoAtiva);
-                  setState(() {
-                    _isPlaying = true;
-                  });
+                  await pararEFecharTransmissao(
+                    session: sessaoAtiva,
+                    webViewController: controller,
+                    onResetUI: () => setState(() {
+                      _isPlaying = true; // Reseta o estado padrão
+                      _estaTransmitindoCast = false; // Desliga a bandeira e some com o flutuante na hora
+                      sessaoAtiva?.disconnect();
+                    }),
+                  );
                 },
                 onSeekBackward: () async {
-                  await mudarPosicao(sessaoAtiva, -10);
+                  await mudarPosicao(sessaoAtiva, -10); // Mantido o seu método original
                 },
                 onSeekForward: () async {
                   await mudarPosicao(sessaoAtiva, 10);
@@ -3439,8 +3113,9 @@ class CastControllerOverlay extends StatelessWidget {
 }
 
 // ==========================================================
-// FUNÇÕES DE CONTROLE CORRETAS USANDO A API DO DART_CAST
+// FUNÇÕES DE CONTROLE USANDO A API DO DART_CAST
 // ==========================================================
+
 Future<void> alternarPlayPause(dynamic session, bool isPlayingAtual) async {
   if (session == null) return;
   try {
@@ -3449,8 +3124,6 @@ Future<void> alternarPlayPause(dynamic session, bool isPlayingAtual) async {
     } else {
       await session.play();
     }
-    // Inverte o estado imediatamente na UI para refletir a ação
-    // (Certifique-se de atualizar a sua variável de estado, ex: setState(() => isPlaying = !isPlayingAtual))
   } catch (e) {
     debugPrint('ERRO PLAY/PAUSE CAST: $e');
   }
@@ -3465,13 +3138,57 @@ Future<void> pararTransmissao(dynamic session) async {
   }
 }
 
+Future<void> pararEFecharTransmissao({
+  required dynamic session,
+  required dynamic webViewController,
+  required Function() onResetUI,
+}) async {
+  try {
+    if (session != null) {
+      await session.stop();
+    }
+
+    // 1. Força o reset do estado da UI para o Flutter destruir o overlay de botões imediatamente
+    onResetUI();
+
+    // 2. Injeta script no WebView para restaurar os elementos web ocultos e tirar a tela preta
+    // Injeta script no WebView para restaurar os elementos web e varrer QUALQUER lixo de cast da tela
+    await webViewController.runJavaScript("""
+      // 1. Remove globalmente QUALQUER mensagem de cast que tenha sobrado em qualquer lugar da página
+      var todasAsMensagens = document.querySelectorAll('.cast-msg');
+      for (var m = 0; m < todasAsMensagens.length; m++) {
+        todasAsMensagens[m].remove();
+      }
+
+      // 2. Função para restaurar os elementos principais
+      var wrapper = document.getElementById('playerWrapper');
+      var viewer = document.getElementById('mediaViewer');
+      var apostila = document.getElementById('imagemApostila');
+
+      function restaurarElemento(el) {
+        if (el) {
+          el.style.backgroundColor = '';
+          var filhos = el.querySelectorAll('*');
+          for (var i = 0; i < filhos.length; i++) {
+            filhos[i].style.display = '';
+          }
+        }
+      }
+
+      restaurarElemento(wrapper);
+      restaurarElemento(viewer);
+      restaurarElemento(apostila);
+    """);
+
+    debugPrint('TRANSMISSÃO ENCERRADA E TELA RESTAURADA COM SUCESSO.');
+  } catch (e) {
+    debugPrint('ERRO AO ENCERRAR TRANSMISSÃO: $e');
+  }
+}
+
 Future<void> mudarPosicao(dynamic session, int segundosDelta) async {
   if (session == null) return;
   try {
-    // Como a sessão aceita seek(Duration), podemos calcular a nova posição
-    // ou usar um valor aproximado baseado no delta de segundos.
-    // Exemplo: buscando a posição atual ou somando direto se houver tracking local.
-    // Vamos chamar o seek passando uma Duration baseada no delta:
     final currentPos = await session.position ?? Duration.zero;
     final novaPos = currentPos + Duration(seconds: segundosDelta);
     await session.seek(novaPos);
