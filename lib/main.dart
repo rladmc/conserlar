@@ -1181,67 +1181,81 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
     (function() {
       console.log('[CONSERLAR] Configurando WebView...');
       
-     /*
-     * ============================================================
-     * FORÇAR VÍDEOS A RODAREM INLINE (SEM PLAYER NATIVO EXTERNO)
-     * ============================================================
-     */
-    function configurarVideosInline() {
-      // 1. Seleciona todos os iframes (onde o player da Bunny geralmente vive)
-      var iframes = document.querySelectorAll('iframe');
-      for (var i = 0; i < iframes.length; i++) {
-        var iframe = iframes[i];
-        // Adiciona os atributos obrigatórios para inline no iframe
-        iframe.setAttribute('playsinline', 'true');
-        iframe.setAttribute('webkit-playsinline', 'true');
-        // Garante que o sandbox permite scripts e same-origin para o player funcionar
-        var sandbox = iframe.getAttribute('sandbox') || '';
-        if (sandbox.indexOf('allow-scripts') === -1) {
-           iframe.setAttribute('sandbox', sandbox + ' allow-scripts allow-same-origin allow-presentation allow-forms allow-popups');
-        }
-        
-        // TENTA ACESSAR O CONTEÚDO DO IFRAME (se for do mesmo domínio)
-        try {
-           var innerDoc = iframe.contentDocument || iframe.contentWindow.document;
-           if (innerDoc) {
-               var innerVideos = innerDoc.querySelectorAll('video');
-               for (var v = 0; v < innerVideos.length; v++) {
-                   innerVideos[v].setAttribute('playsinline', 'true');
-                   innerVideos[v].setAttribute('webkit-playsinline', 'true');
-               }
-           }
-        } catch(e) { console.log('Cross-origin iframe, não foi possível acessar o vídeo interno.'); }
-      }
+     function configurarVideosInline() {
+  // IFRAMES
+  var iframes = document.querySelectorAll('iframe');
 
-      // 2. Seleciona todas as tags <video> diretas na página
-      var videos = document.querySelectorAll('video');
-      for (var j = 0; j < videos.length; j++) {
-        var video = videos[j];
-        video.setAttribute('playsinline', 'true');
-        video.setAttribute('webkit-playsinline', 'true');
-        video.setAttribute('x-webkit-airplay', 'allow');
-        
-        // Garante que o controle de tela cheia seja desabilitado se o player nativo tentar forçar
-        video.controls = false; // Importante: remove os controles nativos do iOS/Safari
-        
-        // Força o tamanho para preencher o contêiner
-        video.style.width = '100% !important';
-        video.style.height = '100% !important';
-        video.style.objectFit = 'contain'; // Ou 'cover', dependendo do seu layout
-      }
-      
-      // 3. Esconde qualquer botão de "Full Screen" nativo que o Safari possa adicionar
-      var styleFs = document.createElement('style');
-      styleFs.innerHTML = 'video::-webkit-media-controls-fullscreen-button { display: none !important; }';
-      document.head.appendChild(styleFs);
+  for (var i = 0; i < iframes.length; i++) {
+    var iframe = iframes[i];
+
+    iframe.setAttribute('playsinline', 'true');
+    iframe.setAttribute('webkit-playsinline', 'true');
+
+    var sandbox = iframe.getAttribute('sandbox') || '';
+
+    if (sandbox.indexOf('allow-scripts') === -1) {
+      iframe.setAttribute(
+        'sandbox',
+        sandbox +
+        ' allow-scripts allow-same-origin allow-presentation allow-forms allow-popups'
+      );
     }
 
-    configurarVideosInline();
-    // Roda várias vezes para garantir que o script pegue o player da Bunny, que pode demorar a carregar
-    setTimeout(configurarVideosInline, 500);
-    setTimeout(configurarVideosInline, 1500);
-    setTimeout(configurarVideosInline, 3000);
-    setInterval(configurarVideosInline, 5000); // Monitoramento contínuo
+    try {
+      var innerDoc =
+          iframe.contentDocument ||
+          iframe.contentWindow.document;
+
+      if (innerDoc) {
+        var innerVideos = innerDoc.querySelectorAll('video');
+
+        for (var v = 0; v < innerVideos.length; v++) {
+          innerVideos[v].setAttribute('playsinline', 'true');
+          innerVideos[v].setAttribute('webkit-playsinline', 'true');
+        }
+      }
+    } catch (e) {
+      console.log('[INLINE] Cross-origin iframe.');
+    }
+  }
+
+  // VÍDEOS
+  var videos = document.querySelectorAll('video');
+
+  for (var j = 0; j < videos.length; j++) {
+    var video = videos[j];
+
+    if (video.id === 'conserlarAirPlayVideo') {
+      continue;
+    }
+
+    video.setAttribute('playsinline', 'true');
+    video.setAttribute('webkit-playsinline', 'true');
+    video.setAttribute('x-webkit-airplay', 'allow');
+    video.controls = false;
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.objectFit = 'contain';
+  }
+
+  // FULLSCREEN
+  if (!document.getElementById('conserlarAirPlayFullscreenStyle')) {
+    var styleFs = document.createElement('style');
+    styleFs.id = 'conserlarAirPlayFullscreenStyle';
+    styleFs.innerHTML =
+      'video::-webkit-media-controls-fullscreen-button{' +
+      'display:none!important;}';
+    document.head.appendChild(styleFs);
+  }
+}
+
+configurarVideosInline();
+
+setTimeout(configurarVideosInline, 500);
+setTimeout(configurarVideosInline, 1500);
+setTimeout(configurarVideosInline, 3000);
+
+setInterval(configurarVideosInline, 5000);
     
     /*
     * ============================================================
