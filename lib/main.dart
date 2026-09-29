@@ -1178,67 +1178,228 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 
   void _configurarWebView() {
     controller.runJavaScript(r'''
-    (function() {
-      console.log('[CONSERLAR] Configurando WebView...');
-      
+  (function() {
+    console.log('[CONSERLAR] Configurando WebView...');
 
-    
     /*
-    * ============================================================
-    * HABILITAR ZOOM POR PINÇA (IOS / ANDROID)
-    * ============================================================
-    */
+     * ============================================================
+     * DETECTAR IOS / IPHONE
+     * ============================================================
+     *
+     * Só vamos alterar o vídeo quando a página estiver
+     * dentro do aplicativo iOS.
+     */
+    var ehIOS =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (
+        navigator.platform === 'MacIntel' &&
+        navigator.maxTouchPoints > 1
+      );
+
+    console.log(
+      '[CONSERLAR IOS] Dispositivo iOS:',
+      ehIOS
+    );
+
+
+    /*
+     * ============================================================
+     * HABILITAR ZOOM POR PINÇA (IOS / ANDROID)
+     * ============================================================
+     */
     function liberarZoomPinça() {
-      var meta = document.querySelector('meta[name="viewport"]');
+      var meta =
+        document.querySelector(
+          'meta[name="viewport"]'
+        );
+
       if (!meta) {
-        meta = document.createElement('meta');
+        meta =
+          document.createElement('meta');
+
         meta.name = 'viewport';
+
         document.head.appendChild(meta);
       }
-      meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes');
 
-      var elementosZoom = document.querySelectorAll('#imagemApostila, #mediaViewer, img, video, iframe');
-      for (var k = 0; k < elementosZoom.length; k++) {
-        elementosZoom[k].style.setProperty('touch-action', 'manipulation', 'important');
-        elementosZoom[k].style.setProperty('-webkit-user-select', 'text', 'important');
+      meta.setAttribute(
+        'content',
+        'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes'
+      );
+
+      var elementosZoom =
+        document.querySelectorAll(
+          '#imagemApostila, #mediaViewer, img, video, iframe'
+        );
+
+      for (
+        var k = 0;
+        k < elementosZoom.length;
+        k++
+      ) {
+        elementosZoom[k].style.setProperty(
+          'touch-action',
+          'manipulation',
+          'important'
+        );
+
+        elementosZoom[k].style.setProperty(
+          '-webkit-user-select',
+          'text',
+          'important'
+        );
       }
     }
 
     liberarZoomPinça();
-    setTimeout(liberarZoomPinça, 1000);
-    
+
+    setTimeout(
+      liberarZoomPinça,
+      1000
+    );
+
+
+    /*
+     * ============================================================
+     * MENU HORIZONTAL
+     * ============================================================
+     */
+
+    function configurarMenuHorizontal() {
+
       /*
-       * ============================================================
-       * MENU HORIZONTAL
-       * ============================================================
+       * Cria o CSS somente uma vez.
        */
+      if (
+        !document.getElementById(
+          'conserlarCastStyle'
+        )
+      ) {
+        var style =
+          document.createElement('style');
 
-      function configurarMenuHorizontal() {
-        /*
-         * Cria o CSS somente uma vez.
-         */
-        if (!document.getElementById('conserlarCastStyle')) {
-          var style = document.createElement('style');
+        style.id =
+          'conserlarCastStyle';
 
-          style.id = 'conserlarCastStyle';
+        style.innerHTML = `
+          header,
+          nav,
+          .navbar,
+          .navbar-nav,
+          .menu,
+          .container-fluid,
+          .row {
+            overflow: visible !important;
+          }
 
-          style.innerHTML = `
-            /*
-             * Containers externos não podem cortar o menu.
-             */
-            header,
-            nav,
-            .navbar,
-            .navbar-nav,
-            .menu,
-            .container-fluid,
-            .row {
-              overflow: visible !important;
-            }
+          #menuNavegacaoSuperior {
+            display: flex !important;
 
-            /*
-             * MENU PRINCIPAL
-             */
+            flex-direction: row !important;
+
+            flex-wrap: nowrap !important;
+
+            justify-content: flex-start !important;
+
+            align-items: center !important;
+
+            width: 100% !important;
+
+            max-width: 100% !important;
+
+            overflow-x: auto !important;
+
+            overflow-y: hidden !important;
+
+            white-space: nowrap !important;
+
+            -webkit-overflow-scrolling: touch !important;
+
+            scrollbar-width: none !important;
+
+            padding-left: 10px !important;
+
+            padding-right: 10px !important;
+
+            gap: 4px !important;
+          }
+
+          #menuNavegacaoSuperior::-webkit-scrollbar {
+            display: none !important;
+
+            width: 0 !important;
+
+            height: 0 !important;
+          }
+
+          #menuNavegacaoSuperior .nav-item {
+            display: inline-flex !important;
+
+            flex: 0 0 auto !important;
+
+            width: auto !important;
+
+            max-width: none !important;
+
+            white-space: nowrap !important;
+          }
+
+          #menuNavegacaoSuperior .nav-link {
+            display: inline-flex !important;
+
+            align-items: center !important;
+
+            flex: 0 0 auto !important;
+
+            width: auto !important;
+
+            white-space: nowrap !important;
+          }
+
+          #menuNavegacaoSuperior > li {
+            display: inline-flex !important;
+
+            flex: 0 0 auto !important;
+
+            width: auto !important;
+
+            white-space: nowrap !important;
+          }
+
+          #menuNavegacaoSuperior > ul,
+          #menuNavegacaoSuperior .navbar-nav {
+            display: flex !important;
+
+            flex-direction: row !important;
+
+            flex-wrap: nowrap !important;
+
+            align-items: center !important;
+
+            width: max-content !important;
+
+            min-width: max-content !important;
+
+            white-space: nowrap !important;
+
+            overflow: visible !important;
+          }
+
+          #menuNavegacaoSuperior .dropdown {
+            position: relative !important;
+
+            flex: 0 0 auto !important;
+          }
+
+          #menuNavegacaoSuperior button {
+            flex: 0 0 auto !important;
+
+            width: auto !important;
+
+            white-space: nowrap !important;
+          }
+
+          @media (max-width: 768px) {
             #menuNavegacaoSuperior {
               display: flex !important;
 
@@ -1246,90 +1407,11 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 
               flex-wrap: nowrap !important;
 
-              justify-content: flex-start !important;
-
-              align-items: center !important;
-
-              width: 100% !important;
-
-              max-width: 100% !important;
-
               overflow-x: auto !important;
 
               overflow-y: hidden !important;
-
-              white-space: nowrap !important;
-
-              -webkit-overflow-scrolling: touch !important;
-
-              scrollbar-width: none !important;
-
-              padding-left: 10px !important;
-
-              padding-right: 10px !important;
-
-              gap: 4px !important;
             }
 
-            /*
-             * Esconde a barra de rolagem no Chrome/WebView.
-             */
-            #menuNavegacaoSuperior::-webkit-scrollbar {
-              display: none !important;
-
-              width: 0 !important;
-
-              height: 0 !important;
-            }
-
-            /*
-             * Cada item fica lado a lado.
-             */
-            #menuNavegacaoSuperior .nav-item {
-              display: inline-flex !important;
-
-              flex: 0 0 auto !important;
-
-              width: auto !important;
-
-              max-width: none !important;
-
-              white-space: nowrap !important;
-            }
-
-            /*
-             * Links do menu também não podem quebrar.
-             */
-            #menuNavegacaoSuperior .nav-link {
-              display: inline-flex !important;
-
-              align-items: center !important;
-
-              flex: 0 0 auto !important;
-
-              width: auto !important;
-
-              white-space: nowrap !important;
-            }
-
-            /*
-             * Caso o menu use <li> sem Bootstrap.
-             */
-            #menuNavegacaoSuperior > li {
-              display: inline-flex !important;
-
-              flex: 0 0 auto !important;
-
-              width: auto !important;
-
-              white-space: nowrap !important;
-            }
-
-            /*
-             * Evita que algum container interno force
-             * o menu a ficar vertical.
-             */
-            #menuNavegacaoSuperior > ul,
             #menuNavegacaoSuperior .navbar-nav {
               display: flex !important;
 
@@ -1337,1069 +1419,1653 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 
               flex-wrap: nowrap !important;
 
-              align-items: center !important;
-
               width: max-content !important;
 
               min-width: max-content !important;
-
-              white-space: nowrap !important;
-
-              overflow: visible !important;
             }
+          }
+        `;
 
-            /*
-             * Se houver dropdown, ele continua funcionando.
-             */
-            #menuNavegacaoSuperior .dropdown {
-              position: relative !important;
+        document.head.appendChild(style);
 
-              flex: 0 0 auto !important;
-            }
-
-            /*
-             * Botões também ficam lado a lado.
-             */
-            #menuNavegacaoSuperior button {
-              flex: 0 0 auto !important;
-
-              width: auto !important;
-
-              white-space: nowrap !important;
-            }
-
-            /*
-             * Não deixa o Bootstrap transformar o menu
-             * em coluna em telas pequenas.
-             */
-            @media (max-width: 768px) {
-              #menuNavegacaoSuperior {
-                display: flex !important;
-
-                flex-direction: row !important;
-
-                flex-wrap: nowrap !important;
-
-                overflow-x: auto !important;
-
-                overflow-y: hidden !important;
-              }
-
-              #menuNavegacaoSuperior .navbar-nav {
-                display: flex !important;
-
-                flex-direction: row !important;
-
-                flex-wrap: nowrap !important;
-
-                width: max-content !important;
-
-                min-width: max-content !important;
-              }
-            }
-          `;
-
-          document.head.appendChild(style);
-
-          console.log(
-            '[CONSERLAR] CSS do menu horizontal instalado.'
-          );
-        }
-
-        /*
-         * ========================================================
-         * FORÇA O MENU EXISTENTE
-         * ========================================================
-         *
-         * Além do CSS, aplicamos diretamente os estilos.
-         * Isso ajuda caso o site tenha algum JavaScript
-         * sobrescrevendo o Bootstrap.
-         */
-
-        var menu =
-          document.getElementById(
-            'menuNavegacaoSuperior'
-          );
-
-        if (!menu) {
-          console.log(
-            '[CONSERLAR] menuNavegacaoSuperior ainda não encontrado.'
-          );
-
-          return;
-        }
-
-        menu.style.setProperty(
-          'display',
-          'flex',
-          'important'
+        console.log(
+          '[CONSERLAR] CSS do menu horizontal instalado.'
         );
-
-        menu.style.setProperty(
-          'flex-direction',
-          'row',
-          'important'
-        );
-
-        menu.style.setProperty(
-          'flex-wrap',
-          'nowrap',
-          'important'
-        );
-
-        menu.style.setProperty(
-          'justify-content',
-          'flex-start',
-          'important'
-        );
-
-        menu.style.setProperty(
-          'align-items',
-          'center',
-          'important'
-        );
-
-        menu.style.setProperty(
-          'width',
-          '100%',
-          'important'
-        );
-
-        menu.style.setProperty(
-          'max-width',
-          '100%',
-          'important'
-        );
-
-        menu.style.setProperty(
-          'overflow-x',
-          'auto',
-          'important'
-        );
-
-        menu.style.setProperty(
-          'overflow-y',
-          'hidden',
-          'important'
-        );
-
-        menu.style.setProperty(
-          'white-space',
-          'nowrap',
-          'important'
-        );
-
-        menu.style.setProperty(
-          '-webkit-overflow-scrolling',
-          'touch',
-          'important'
-        );
-
-        /*
-         * Procura o container interno do menu.
-         */
-        var menuInterno =
-          menu.querySelector(
-            '.navbar-nav'
-          );
-
-        if (!menuInterno) {
-          menuInterno =
-            menu.querySelector('ul');
-        }
-
-        if (menuInterno) {
-          menuInterno.style.setProperty(
-            'display',
-            'flex',
-            'important'
-          );
-
-          menuInterno.style.setProperty(
-            'flex-direction',
-            'row',
-            'important'
-          );
-
-          menuInterno.style.setProperty(
-            'flex-wrap',
-            'nowrap',
-            'important'
-          );
-
-          menuInterno.style.setProperty(
-            'width',
-            'max-content',
-            'important'
-          );
-
-          menuInterno.style.setProperty(
-            'min-width',
-            'max-content',
-            'important'
-          );
-
-          menuInterno.style.setProperty(
-            'white-space',
-            'nowrap',
-            'important'
-          );
-
-          menuInterno.style.setProperty(
-            'overflow',
-            'visible',
-            'important'
-          );
-        }
-
-        /*
-         * Cada item.
-         */
-        var itens =
-          menu.querySelectorAll(
-            '.nav-item, li'
-          );
-
-        for (var i = 0; i < itens.length; i++) {
-          itens[i].style.setProperty(
-            'display',
-            'inline-flex',
-            'important'
-          );
-
-          itens[i].style.setProperty(
-            'flex',
-            '0 0 auto',
-            'important'
-          );
-
-          itens[i].style.setProperty(
-            'width',
-            'auto',
-            'important'
-          );
-
-          itens[i].style.setProperty(
-            'white-space',
-            'nowrap',
-            'important'
-          );
-        }
       }
 
-      /*
-       * Executa agora.
-       */
-      configurarMenuHorizontal();
 
-      /*
-       * O site pode recriar o menu depois que a página
-       * termina de carregar. Por isso verificamos novamente.
-       */
-      setTimeout(
-        configurarMenuHorizontal,
-        300
-      );
+      var menu =
+        document.getElementById(
+          'menuNavegacaoSuperior'
+        );
 
-      setTimeout(
-        configurarMenuHorizontal,
-        1000
-      );
-
-      setTimeout(
-        configurarMenuHorizontal,
-        2000
-      );
-
-      setInterval(
-        configurarMenuHorizontal,
-        1500
-      );
-
-
-      /*
-       * ============================================================
-       * DETECTOR DE MÍDIA REAL
-       * ============================================================
-       */
-
-      console.log(
-        '[CONSERLAR CAST] Instalando detector de mídia real...'
-      );
-
-      if (window.__conserlarCastInstalado) {
+      if (!menu) {
         console.log(
-          '[CONSERLAR CAST] Detector já instalado.'
+          '[CONSERLAR] menuNavegacaoSuperior ainda não encontrado.'
         );
 
         return;
       }
 
-      window.__conserlarCastInstalado = true;
+      menu.style.setProperty(
+        'display',
+        'flex',
+        'important'
+      );
 
-      var ultimoUrl = '';
-      var ultimoTipo = '';
+      menu.style.setProperty(
+        'flex-direction',
+        'row',
+        'important'
+      );
 
-      /*
-       * ------------------------------------------------------------
-       * UTILITÁRIOS
-       * ------------------------------------------------------------
-       */
+      menu.style.setProperty(
+        'flex-wrap',
+        'nowrap',
+        'important'
+      );
 
-      function normalizarUrl(url) {
-        if (!url) return '';
+      menu.style.setProperty(
+        'justify-content',
+        'flex-start',
+        'important'
+      );
 
-        try {
-          return new URL(
-            url,
-            window.location.href
-          ).href;
-        } catch(e) {
-          return String(url);
-        }
+      menu.style.setProperty(
+        'align-items',
+        'center',
+        'important'
+      );
+
+      menu.style.setProperty(
+        'width',
+        '100%',
+        'important'
+      );
+
+      menu.style.setProperty(
+        'max-width',
+        '100%',
+        'important'
+      );
+
+      menu.style.setProperty(
+        'overflow-x',
+        'auto',
+        'important'
+      );
+
+      menu.style.setProperty(
+        'overflow-y',
+        'hidden',
+        'important'
+      );
+
+      menu.style.setProperty(
+        'white-space',
+        'nowrap',
+        'important'
+      );
+
+      menu.style.setProperty(
+        '-webkit-overflow-scrolling',
+        'touch',
+        'important'
+      );
+
+
+      var menuInterno =
+        menu.querySelector(
+          '.navbar-nav'
+        );
+
+      if (!menuInterno) {
+        menuInterno =
+          menu.querySelector('ul');
       }
 
-      function visivel(el) {
-        if (!el) return false;
+      if (menuInterno) {
 
-        try {
-          var style =
-            window.getComputedStyle(el);
+        menuInterno.style.setProperty(
+          'display',
+          'flex',
+          'important'
+        );
 
-          var rect =
-            el.getBoundingClientRect();
+        menuInterno.style.setProperty(
+          'flex-direction',
+          'row',
+          'important'
+        );
 
-          return style.display !== 'none' &&
-                 style.visibility !== 'hidden' &&
-                 parseFloat(
-                   style.opacity || '1'
-                 ) > 0 &&
-                 rect.width > 10 &&
-                 rect.height > 10;
-        } catch(e) {
-          return false;
-        }
+        menuInterno.style.setProperty(
+          'flex-wrap',
+          'nowrap',
+          'important'
+        );
+
+        menuInterno.style.setProperty(
+          'width',
+          'max-content',
+          'important'
+        );
+
+        menuInterno.style.setProperty(
+          'min-width',
+          'max-content',
+          'important'
+        );
+
+        menuInterno.style.setProperty(
+          'white-space',
+          'nowrap',
+          'important'
+        );
+
+        menuInterno.style.setProperty(
+          'overflow',
+          'visible',
+          'important'
+        );
       }
 
-      function tamanhoVisivel(el) {
-        if (!el) return 0;
 
-        try {
-          var r =
-            el.getBoundingClientRect();
+      var itens =
+        menu.querySelectorAll(
+          '.nav-item, li'
+        );
 
-          return Math.max(
-            0,
-            r.width * r.height
-          );
-        } catch(e) {
-          return 0;
-        }
+      for (
+        var i = 0;
+        i < itens.length;
+        i++
+      ) {
+
+        itens[i].style.setProperty(
+          'display',
+          'inline-flex',
+          'important'
+        );
+
+        itens[i].style.setProperty(
+          'flex',
+          '0 0 auto',
+          'important'
+        );
+
+        itens[i].style.setProperty(
+          'width',
+          'auto',
+          'important'
+        );
+
+        itens[i].style.setProperty(
+          'white-space',
+          'nowrap',
+          'important'
+        );
       }
+    }
 
-      function urlParecePagina(url) {
-        if (!url) return true;
 
-        var u =
-          url.toLowerCase();
+    configurarMenuHorizontal();
 
-        if (
-          u.includes('/planilha') ||
-          u.includes('/planilhas') ||
-          u.includes('/spreadsheet') ||
-          u.includes('/document') ||
-          u.includes('/documento')
-        ) {
-          return true;
-        }
+    setTimeout(
+      configurarMenuHorizontal,
+      300
+    );
 
-        if (
-          u.includes('_page-') &&
-          !u.match(
-            /\.(mp4|webm|m3u8|jpg|jpeg|png|webp|gif)(\?|$)/i
-          )
-        ) {
-          return true;
-        }
+    setTimeout(
+      configurarMenuHorizontal,
+      1000
+    );
 
-        if (
-          u.endsWith('.html') ||
-          u.endsWith('.htm') ||
-          u.endsWith('.php') ||
-          u.endsWith('.asp') ||
-          u.endsWith('.aspx')
-        ) {
-          return true;
-        }
+    setTimeout(
+      configurarMenuHorizontal,
+      2000
+    );
 
-        return false;
-      }
+    setInterval(
+      configurarMenuHorizontal,
+      1500
+    );
 
-      function extrairUrlDoElemento(el) {
-        if (!el) return '';
 
-        var candidatos = [];
+    /*
+     * ============================================================
+     * CONVERSOR DE VÍDEO PARA MP4 DIRETO
+     * ============================================================
+     *
+     * Exemplo:
+     *
+     * mediadelivery.net/embed/ABC123
+     *
+     * vira:
+     *
+     * https://vz-84a4a5f4-d42b-cdn.net/
+     * ABC123/play_360p.mp4
+     *
+     * IMPORTANTE:
+     * Só é utilizado no iOS.
+     */
+    function converterVideoParaMp4(url) {
 
-        if (el.currentSrc) {
-          candidatos.push(
-            el.currentSrc
-          );
-        }
-
-        if (el.src) {
-          candidatos.push(
-            el.src
-          );
-        }
-
-        try {
-          var sources =
-            el.querySelectorAll(
-              'source'
-            );
-
-          for (
-            var i = 0;
-            i < sources.length;
-            i++
-          ) {
-            if (sources[i].src) {
-              candidatos.push(
-                sources[i].src
-              );
-            }
-
-            var ds =
-              sources[i].getAttribute(
-                'data-src'
-              );
-
-            if (ds) {
-              candidatos.push(ds);
-            }
-          }
-        } catch(e) {}
-
-        var atributos = [
-          'data-src',
-          'data-original',
-          'data-url',
-          'data-image',
-          'data-image-url',
-          'data-video',
-          'data-video-url',
-          'data-file',
-          'data-media',
-          'data-media-url'
-        ];
-
-        for (
-          var j = 0;
-          j < atributos.length;
-          j++
-        ) {
-          try {
-            var valor =
-              el.getAttribute(
-                atributos[j]
-              );
-
-            if (valor) {
-              candidatos.push(valor);
-            }
-          } catch(e) {}
-        }
-
-        for (
-          var k = 0;
-          k < candidatos.length;
-          k++
-        ) {
-          var url =
-            normalizarUrl(
-              candidatos[k]
-            );
-
-          if (!url) continue;
-
-          if (
-            url.indexOf('blob:') === 0
-          ) {
-            continue;
-          }
-
-          if (
-            urlParecePagina(url)
-          ) {
-            console.log(
-              '[CONSERLAR CAST] Ignorando URL que parece página:',
-              url
-            );
-
-            continue;
-          }
-
-          return url;
-        }
-
+      if (!url) {
         return '';
       }
 
       /*
-       * ------------------------------------------------------------
-       * ENCONTRAR VÍDEO REAL
-       * ------------------------------------------------------------
+       * Android / navegador:
+       * não altera nada.
        */
+      if (!ehIOS) {
+        return url;
+      }
 
-      function encontrarVideoReal() {
-        var candidatos = [];
+      try {
 
-        var videos =
-          document.querySelectorAll(
-            'video'
-          );
+        var texto =
+          String(url);
 
-        for (
-          var i = 0;
-          i < videos.length;
-          i++
+        /*
+         * Já é MP4.
+         */
+        if (
+          /\.mp4(\?|#|$)/i.test(texto)
         ) {
-          var video = videos[i];
-
-          if (!visivel(video)) {
-            continue;
-          }
-
-          var url =
-            extrairUrlDoElemento(
-              video
-            );
-
-          if (!url) continue;
-
-          candidatos.push({
-            el: video,
-            url: url,
-            area:
-              tamanhoVisivel(video),
-            prioridade: 100
-          });
+          return texto;
         }
 
-        var mediaViewer =
-          document.getElementById(
-            'mediaViewer'
+        /*
+         * Só converte MediaDelivery.
+         */
+        if (
+          texto.indexOf(
+            'mediadelivery.net/embed/'
+          ) === -1
+        ) {
+          return texto;
+        }
+
+        var partes =
+          texto.split(
+            '/embed/'
           );
 
         if (
-          mediaViewer &&
-          visivel(mediaViewer)
+          partes.length < 2
         ) {
-          var urlViewer =
-            extrairUrlDoElemento(
-              mediaViewer
-            );
-
-          if (urlViewer) {
-            candidatos.push({
-              el: mediaViewer,
-              url: urlViewer,
-              area:
-                tamanhoVisivel(
-                  mediaViewer
-                ),
-              prioridade: 90
-            });
-          }
+          return texto;
         }
 
-        var wrapper =
-          document.getElementById(
-            'playerWrapper'
-          );
+        var videoId =
+          partes[1]
+            .split('?')[0]
+            .split('#')[0]
+            .split('/')[0];
 
-        if (wrapper) {
-          var videosWrapper =
-            wrapper.querySelectorAll(
-              'video'
+        if (!videoId) {
+          return texto;
+        }
+
+        var mp4 =
+          'https://vz-84a4a5f4-d42b-cdn.net/' +
+          videoId +
+          '/play_360p.mp4';
+
+        console.log(
+          '[CONSERLAR IOS] MP4 direto:',
+          mp4
+        );
+
+        return mp4;
+
+      } catch(e) {
+
+        console.log(
+          '[CONSERLAR IOS] Erro convertendo vídeo:',
+          e
+        );
+
+        return url;
+      }
+    }
+
+
+    /*
+     * ============================================================
+     * ALTERAR SRC DO VÍDEO REAL
+     * ============================================================
+     *
+     * Aqui está a principal alteração.
+     *
+     * Não criamos outro vídeo.
+     *
+     * Pegamos o <video> existente e trocamos
+     * o src pelo MP4 direto.
+     */
+    function ajustarVideosParaIos() {
+
+      /*
+       * Só executa no iOS.
+       */
+      if (!ehIOS) {
+        return;
+      }
+
+      var videos =
+        document.querySelectorAll(
+          'video'
+        );
+
+      for (
+        var i = 0;
+        i < videos.length;
+        i++
+      ) {
+
+        var video =
+          videos[i];
+
+        if (!video) {
+          continue;
+        }
+
+        /*
+         * Evita processar novamente o mesmo vídeo.
+         */
+        if (
+          video.dataset.conserlarMp4Aplicado ===
+          'true'
+        ) {
+          continue;
+        }
+
+        var srcOriginal =
+          '';
+
+        /*
+         * currentSrc pode ser mais confiável
+         * quando existe <source>.
+         */
+        if (video.currentSrc) {
+          srcOriginal =
+            video.currentSrc;
+        }
+
+        if (!srcOriginal && video.src) {
+          srcOriginal =
+            video.src;
+        }
+
+        /*
+         * Se ainda não encontrou no video,
+         * procura nos <source>.
+         */
+        if (!srcOriginal) {
+
+          var sources =
+            video.querySelectorAll(
+              'source'
             );
 
           for (
-            var w = 0;
-            w < videosWrapper.length;
-            w++
+            var s = 0;
+            s < sources.length;
+            s++
           ) {
-            var vw =
-              videosWrapper[w];
 
-            if (!visivel(vw)) {
-              continue;
-            }
-
-            var uw =
-              extrairUrlDoElemento(vw);
-
-            if (uw) {
-              candidatos.push({
-                el: vw,
-                url: uw,
-                area:
-                  tamanhoVisivel(vw),
-                prioridade: 110
-              });
-            }
-          }
-        }
-
-        if (
-          candidatos.length === 0
-        ) {
-          return null;
-        }
-
-        candidatos.sort(
-          function(a, b) {
             if (
-              b.prioridade !==
-              a.prioridade
+              sources[s].src
             ) {
-              return (
-                b.prioridade -
-                a.prioridade
-              );
+              srcOriginal =
+                sources[s].src;
+
+              break;
             }
 
-            return b.area - a.area;
+            var dataSrc =
+              sources[s].getAttribute(
+                'data-src'
+              );
+
+            if (dataSrc) {
+              srcOriginal =
+                dataSrc;
+
+              break;
+            }
           }
-        );
+        }
 
-        return candidatos[0];
-      }
+        if (!srcOriginal) {
+          continue;
+        }
 
-      /*
-       * ------------------------------------------------------------
-       * ENCONTRAR IMAGEM REAL
-       * ------------------------------------------------------------
-       */
-
-      function encontrarImagemReal() {
-        var candidatos = [];
-
-        var apostila =
-          document.getElementById(
-            'imagemApostila'
+        var novoSrc =
+          converterVideoParaMp4(
+            srcOriginal
           );
 
+        /*
+         * Não é um link MediaDelivery.
+         */
         if (
-          apostila &&
-          visivel(apostila)
+          novoSrc === srcOriginal
         ) {
-          var urlApostila =
-            extrairUrlDoElemento(
-              apostila
-            );
-
-          if (urlApostila) {
-            candidatos.push({
-              el: apostila,
-              url: urlApostila,
-              area:
-                tamanhoVisivel(
-                  apostila
-                ),
-              prioridade: 200
-            });
-          }
+          continue;
         }
 
-        var imagens =
-          document.querySelectorAll(
-            'img'
+        console.log(
+          '[CONSERLAR IOS] ALTERANDO SRC DO VÍDEO'
+        );
+
+        console.log(
+          '[CONSERLAR IOS] Original:',
+          srcOriginal
+        );
+
+        console.log(
+          '[CONSERLAR IOS] Novo:',
+          novoSrc
+        );
+
+        /*
+         * Se existir <source>, removemos
+         * os sources antigos para evitar
+         * que o navegador volte para eles.
+         */
+        var sourcesAntigos =
+          video.querySelectorAll(
+            'source'
+          );
+
+        for (
+          var x = 0;
+          x < sourcesAntigos.length;
+          x++
+        ) {
+          try {
+            sourcesAntigos[x].remove();
+          } catch(e) {}
+        }
+
+        /*
+         * Marca como processado.
+         */
+        video.dataset.conserlarMp4Aplicado =
+          'true';
+
+        /*
+         * Troca o SRC do próprio vídeo.
+         */
+        video.src =
+          novoSrc;
+
+        /*
+         * Permite reprodução externa/AirPlay.
+         */
+        try {
+          video.allowsExternalPlayback =
+            true;
+        } catch(e) {}
+
+        /*
+         * IMPORTANTE:
+         *
+         * Não vamos criar um vídeo invisível.
+         *
+         * Estamos usando o vídeo real da página.
+         */
+
+        /*
+         * Recarrega o vídeo com o novo SRC.
+         */
+        try {
+          video.load();
+        } catch(e) {}
+
+        console.log(
+          '[CONSERLAR IOS] Vídeo agora usa MP4 direto.'
+        );
+      }
+    }
+
+
+    /*
+     * Executa imediatamente.
+     */
+    ajustarVideosParaIos();
+
+
+    /*
+     * Executa novamente porque o site pode
+     * criar o vídeo depois.
+     */
+    setTimeout(
+      ajustarVideosParaIos,
+      300
+    );
+
+    setTimeout(
+      ajustarVideosParaIos,
+      1000
+    );
+
+    setTimeout(
+      ajustarVideosParaIos,
+      2000
+    );
+
+    setTimeout(
+      ajustarVideosParaIos,
+      4000
+    );
+
+
+    /*
+     * ============================================================
+     * DETECTOR DE MÍDIA REAL
+     * ============================================================
+     */
+
+    console.log(
+      '[CONSERLAR CAST] Instalando detector de mídia real...'
+    );
+
+    if (
+      window.__conserlarCastInstalado
+    ) {
+
+      console.log(
+        '[CONSERLAR CAST] Detector já instalado.'
+      );
+
+      return;
+    }
+
+    window.__conserlarCastInstalado =
+      true;
+
+    var ultimoUrl = '';
+
+    var ultimoTipo = '';
+
+
+    /*
+     * ------------------------------------------------------------
+     * UTILITÁRIOS
+     * ------------------------------------------------------------
+     */
+
+    function normalizarUrl(url) {
+
+      if (!url) {
+        return '';
+      }
+
+      try {
+
+        return new URL(
+          url,
+          window.location.href
+        ).href;
+
+      } catch(e) {
+
+        return String(url);
+      }
+    }
+
+
+    function visivel(el) {
+
+      if (!el) {
+        return false;
+      }
+
+      try {
+
+        var style =
+          window.getComputedStyle(
+            el
+          );
+
+        var rect =
+          el.getBoundingClientRect();
+
+        return (
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          parseFloat(
+            style.opacity || '1'
+          ) > 0 &&
+          rect.width > 10 &&
+          rect.height > 10
+        );
+
+      } catch(e) {
+
+        return false;
+      }
+    }
+
+
+    function tamanhoVisivel(el) {
+
+      if (!el) {
+        return 0;
+      }
+
+      try {
+
+        var r =
+          el.getBoundingClientRect();
+
+        return Math.max(
+          0,
+          r.width * r.height
+        );
+
+      } catch(e) {
+
+        return 0;
+      }
+    }
+
+
+    function urlParecePagina(url) {
+
+      if (!url) {
+        return true;
+      }
+
+      var u =
+        url.toLowerCase();
+
+      if (
+        u.includes('/planilha') ||
+        u.includes('/planilhas') ||
+        u.includes('/spreadsheet') ||
+        u.includes('/document') ||
+        u.includes('/documento')
+      ) {
+        return true;
+      }
+
+      if (
+        u.includes('_page-') &&
+        !u.match(
+          /\.(mp4|webm|m3u8|jpg|jpeg|png|webp|gif)(\?|$)/i
+        )
+      ) {
+        return true;
+      }
+
+      if (
+        u.endsWith('.html') ||
+        u.endsWith('.htm') ||
+        u.endsWith('.php') ||
+        u.endsWith('.asp') ||
+        u.endsWith('.aspx')
+      ) {
+        return true;
+      }
+
+      return false;
+    }
+
+
+    function extrairUrlDoElemento(el) {
+
+      if (!el) {
+        return '';
+      }
+
+      var candidatos = [];
+
+
+      if (el.currentSrc) {
+
+        candidatos.push(
+          el.currentSrc
+        );
+      }
+
+
+      if (el.src) {
+
+        candidatos.push(
+          el.src
+        );
+      }
+
+
+      try {
+
+        var sources =
+          el.querySelectorAll(
+            'source'
           );
 
         for (
           var i = 0;
-          i < imagens.length;
+          i < sources.length;
           i++
         ) {
-          var img = imagens[i];
-
-          if (!visivel(img)) {
-            continue;
-          }
 
           if (
-            tamanhoVisivel(img) < 5000
+            sources[i].src
           ) {
-            continue;
+
+            candidatos.push(
+              sources[i].src
+            );
           }
 
-          var url =
-            extrairUrlDoElemento(img);
+          var ds =
+            sources[i].getAttribute(
+              'data-src'
+            );
 
-          if (!url) continue;
+          if (ds) {
 
-          candidatos.push({
-            el: img,
-            url: url,
-            area:
-              tamanhoVisivel(img),
-            prioridade: 100
-          });
+            candidatos.push(
+              ds
+            );
+          }
         }
 
-        var elementos =
-          document.querySelectorAll('*');
+      } catch(e) {}
 
-        for (
-          var j = 0;
-          j < elementos.length;
-          j++
-        ) {
-          var el =
-            elementos[j];
 
-          if (!visivel(el)) {
-            continue;
+      var atributos = [
+
+        'data-src',
+
+        'data-original',
+
+        'data-url',
+
+        'data-image',
+
+        'data-image-url',
+
+        'data-video',
+
+        'data-video-url',
+
+        'data-file',
+
+        'data-media',
+
+        'data-media-url'
+
+      ];
+
+
+      for (
+        var j = 0;
+        j < atributos.length;
+        j++
+      ) {
+
+        try {
+
+          var valor =
+            el.getAttribute(
+              atributos[j]
+            );
+
+          if (valor) {
+
+            candidatos.push(
+              valor
+            );
           }
 
-          if (
-            tamanhoVisivel(el) < 10000
-          ) {
-            continue;
-          }
-
-          try {
-            var bg =
-              window.getComputedStyle(
-                el
-              ).backgroundImage;
-
-            if (
-              bg &&
-              bg !== 'none' &&
-              bg.indexOf(
-                'url('
-              ) !== -1
-            ) {
-              var match =
-                bg.match(
-                  /url\(["']?(.*?)["']?\)/
-                );
-
-              if (
-                match &&
-                match[1]
-              ) {
-                var bgUrl =
-                  normalizarUrl(
-                    match[1]
-                  );
-
-                if (
-                  bgUrl &&
-                  !urlParecePagina(
-                    bgUrl
-                  )
-                ) {
-                  candidatos.push({
-                    el: el,
-                    url: bgUrl,
-                    area:
-                      tamanhoVisivel(el),
-                    prioridade: 80
-                  });
-                }
-              }
-            }
-          } catch(e) {}
-        }
-
-        if (
-          candidatos.length === 0
-        ) {
-          return null;
-        }
-
-        candidatos.sort(
-          function(a, b) {
-            if (
-              b.prioridade !==
-              a.prioridade
-            ) {
-              return (
-                b.prioridade -
-                a.prioridade
-              );
-            }
-
-            return b.area - a.area;
-          }
-        );
-
-        return candidatos[0];
+        } catch(e) {}
       }
 
-      /*
-       * ------------------------------------------------------------
-       * DETECTOR PRINCIPAL
-       * ------------------------------------------------------------
-       */
 
-      function obterMidiaReal() {
+      for (
+        var k = 0;
+        k < candidatos.length;
+        k++
+      ) {
+
+        var url =
+          normalizarUrl(
+            candidatos[k]
+          );
+
+        if (!url) {
+          continue;
+        }
+
+
+        if (
+          url.indexOf('blob:') === 0
+        ) {
+
+          continue;
+        }
+
+
+        /*
+         * Para vídeo, garantimos que o
+         * detector também veja o MP4.
+         */
+        if (
+          el.tagName &&
+          el.tagName.toLowerCase() ===
+          'video'
+        ) {
+
+          url =
+            converterVideoParaMp4(
+              url
+            );
+        }
+
+
+        if (
+          urlParecePagina(url)
+        ) {
+
+          console.log(
+            '[CONSERLAR CAST] Ignorando URL que parece página:',
+            url
+          );
+
+          continue;
+        }
+
+
+        return url;
+      }
+
+
+      return '';
+    }
+
+
+    /*
+     * ------------------------------------------------------------
+     * ENCONTRAR VÍDEO REAL
+     * ------------------------------------------------------------
+     */
+
+    function encontrarVideoReal() {
+
+      var candidatos = [];
+
+
+      var videos =
+        document.querySelectorAll(
+          'video'
+        );
+
+
+      for (
+        var i = 0;
+        i < videos.length;
+        i++
+      ) {
+
         var video =
-          encontrarVideoReal();
+          videos[i];
 
         if (
-          video &&
-          video.url
+          !visivel(video)
         ) {
-          return {
-            url: video.url,
-
-            titulo:
-              document.getElementById(
-                'aulaTitulo'
-              )?.innerText ||
-              document.title ||
-              'Aula Conserlar',
-
-            tipo: 'video',
-
-            abrirMenu: false
-          };
+          continue;
         }
 
-        var imagem =
-          encontrarImagemReal();
+
+        var url =
+          extrairUrlDoElemento(
+            video
+          );
+
+
+        if (!url) {
+          continue;
+        }
+
+
+        candidatos.push({
+
+          el: video,
+
+          url: url,
+
+          area:
+            tamanhoVisivel(
+              video
+            ),
+
+          prioridade: 100
+
+        });
+      }
+
+
+      var mediaViewer =
+        document.getElementById(
+          'mediaViewer'
+        );
+
+
+      if (
+        mediaViewer &&
+        visivel(mediaViewer)
+      ) {
+
+        var urlViewer =
+          extrairUrlDoElemento(
+            mediaViewer
+          );
+
+
+        if (urlViewer) {
+
+          candidatos.push({
+
+            el: mediaViewer,
+
+            url: urlViewer,
+
+            area:
+              tamanhoVisivel(
+                mediaViewer
+              ),
+
+            prioridade: 90
+
+          });
+        }
+      }
+
+
+      var wrapper =
+        document.getElementById(
+          'playerWrapper'
+        );
+
+
+      if (wrapper) {
+
+        var videosWrapper =
+          wrapper.querySelectorAll(
+            'video'
+          );
+
+
+        for (
+          var w = 0;
+          w < videosWrapper.length;
+          w++
+        ) {
+
+          var vw =
+            videosWrapper[w];
+
+
+          if (
+            !visivel(vw)
+          ) {
+            continue;
+          }
+
+
+          var uw =
+            extrairUrlDoElemento(
+              vw
+            );
+
+
+          if (uw) {
+
+            candidatos.push({
+
+              el: vw,
+
+              url: uw,
+
+              area:
+                tamanhoVisivel(
+                  vw
+                ),
+
+              prioridade: 110
+
+            });
+          }
+        }
+      }
+
+
+      if (
+        candidatos.length === 0
+      ) {
+
+        return null;
+      }
+
+
+      candidatos.sort(
+        function(a, b) {
+
+          if (
+            b.prioridade !==
+            a.prioridade
+          ) {
+
+            return (
+              b.prioridade -
+              a.prioridade
+            );
+          }
+
+
+          return (
+            b.area -
+            a.area
+          );
+        }
+      );
+
+
+      return candidatos[0];
+    }
+
+
+    /*
+     * ------------------------------------------------------------
+     * ENCONTRAR IMAGEM REAL
+     * ------------------------------------------------------------
+     */
+
+    function encontrarImagemReal() {
+
+      var candidatos = [];
+
+
+      var apostila =
+        document.getElementById(
+          'imagemApostila'
+        );
+
+
+      if (
+        apostila &&
+        visivel(apostila)
+      ) {
+
+        var urlApostila =
+          extrairUrlDoElemento(
+            apostila
+          );
+
+
+        if (urlApostila) {
+
+          candidatos.push({
+
+            el: apostila,
+
+            url: urlApostila,
+
+            area:
+              tamanhoVisivel(
+                apostila
+              ),
+
+            prioridade: 200
+
+          });
+        }
+      }
+
+
+      var imagens =
+        document.querySelectorAll(
+          'img'
+        );
+
+
+      for (
+        var i = 0;
+        i < imagens.length;
+        i++
+      ) {
+
+        var img =
+          imagens[i];
+
 
         if (
-          imagem &&
-          imagem.url
+          !visivel(img)
         ) {
-          return {
-            url: imagem.url,
-
-            titulo:
-              document.getElementById(
-                'aulaTitulo'
-              )?.innerText ||
-              document.title ||
-              'Esquema Conserlar',
-
-            tipo: 'image',
-
-            abrirMenu: false
-          };
+          continue;
         }
+
+
+        if (
+          tamanhoVisivel(img) < 5000
+        ) {
+          continue;
+        }
+
+
+        var url =
+          extrairUrlDoElemento(
+            img
+          );
+
+
+        if (!url) {
+          continue;
+        }
+
+
+        candidatos.push({
+
+          el: img,
+
+          url: url,
+
+          area:
+            tamanhoVisivel(
+              img
+            ),
+
+          prioridade: 100
+
+        });
+      }
+
+
+      var elementos =
+        document.querySelectorAll(
+          '*'
+        );
+
+
+      for (
+        var j = 0;
+        j < elementos.length;
+        j++
+      ) {
+
+        var el =
+          elementos[j];
+
+
+        if (
+          !visivel(el)
+        ) {
+          continue;
+        }
+
+
+        if (
+          tamanhoVisivel(el) < 10000
+        ) {
+          continue;
+        }
+
+
+        try {
+
+          var bg =
+            window.getComputedStyle(
+              el
+            ).backgroundImage;
+
+
+          if (
+            bg &&
+            bg !== 'none' &&
+            bg.indexOf(
+              'url('
+            ) !== -1
+          ) {
+
+            var match =
+              bg.match(
+                /url\(["']?(.*?)["']?\)/
+              );
+
+
+            if (
+              match &&
+              match[1]
+            ) {
+
+              var bgUrl =
+                normalizarUrl(
+                  match[1]
+                );
+
+
+              if (
+                bgUrl &&
+                !urlParecePagina(
+                  bgUrl
+                )
+              ) {
+
+                candidatos.push({
+
+                  el: el,
+
+                  url: bgUrl,
+
+                  area:
+                    tamanhoVisivel(
+                      el
+                    ),
+
+                  prioridade: 80
+
+                });
+              }
+            }
+          }
+
+        } catch(e) {}
+      }
+
+
+      if (
+        candidatos.length === 0
+      ) {
+
+        return null;
+      }
+
+
+      candidatos.sort(
+        function(a, b) {
+
+          if (
+            b.prioridade !==
+            a.prioridade
+          ) {
+
+            return (
+              b.prioridade -
+              a.prioridade
+            );
+          }
+
+
+          return (
+            b.area -
+            a.area
+          );
+        }
+      );
+
+
+      return candidatos[0];
+    }
+
+
+    /*
+     * ------------------------------------------------------------
+     * DETECTOR PRINCIPAL
+     * ------------------------------------------------------------
+     */
+
+    function obterMidiaReal() {
+
+      var video =
+        encontrarVideoReal();
+
+
+      if (
+        video &&
+        video.url
+      ) {
 
         return {
-          url: '',
-          titulo: '',
-          tipo: '',
-          abrirMenu: false
+
+          url:
+            video.url,
+
+          titulo:
+            document.getElementById(
+              'aulaTitulo'
+            )?.innerText ||
+            document.title ||
+            'Aula Conserlar',
+
+          tipo:
+            'video',
+
+          abrirMenu:
+            false
         };
       }
 
-      /*
-       * ------------------------------------------------------------
-       * ENVIO PARA FLUTTER
-       * ------------------------------------------------------------
-       */
 
-      function enviarMidia(
-        abrirMenu
+      var imagem =
+        encontrarImagemReal();
+
+
+      if (
+        imagem &&
+        imagem.url
       ) {
-        var info =
-          obterMidiaReal();
 
-        if (!info.url) {
-          console.log(
-            '[CONSERLAR CAST] Nenhuma mídia real encontrada.'
-          );
+        return {
 
-          return;
-        }
+          url:
+            imagem.url,
 
-        if (
-          info.url === ultimoUrl &&
-          info.tipo === ultimoTipo &&
-          !abrirMenu
-        ) {
-          return;
-        }
+          titulo:
+            document.getElementById(
+              'aulaTitulo'
+            )?.innerText ||
+            document.title ||
+            'Esquema Conserlar',
 
-        ultimoUrl = info.url;
-        ultimoTipo = info.tipo;
+          tipo:
+            'image',
 
-        info.abrirMenu =
-          !!abrirMenu;
-
-        console.log(
-          '[CONSERLAR CAST] MÍDIA REAL:',
-          info.tipo,
-          info.url
-        );
-
-        if (
-          window.AndroidCastBridge
-        ) {
-          window.AndroidCastBridge.postMessage(
-            JSON.stringify(info)
-          );
-        }
+          abrirMenu:
+            false
+        };
       }
 
-      /*
-       * ------------------------------------------------------------
-       * BOTÃO FULLSCREEN
-       * ------------------------------------------------------------
-       */
 
-      setInterval(
-        function() {
-          var full =
-            document.getElementById(
-              'btnFull'
-            );
+      return {
 
-          if (full) {
-            full.innerHTML =
-              '<i class="bi bi-fullscreen"></i> Full';
+        url: '',
 
-            if (
-              !full.dataset.configurado
-            ) {
-              full.dataset.configurado =
-                'true';
+        titulo: '',
 
-              full.onclick =
-                function(e) {
-                  e.preventDefault();
+        tipo: '',
 
-                  window.location.href =
-                    'app://full_clicked';
-                };
-            }
-          }
-        },
-        300
-      );
+        abrirMenu: false
+      };
+    }
 
-      /*
-       * ------------------------------------------------------------
-       * BOTÃO CAST
-       * ------------------------------------------------------------
-       */
 
-      setInterval(
-        function() {
-          var cast =
-            document.getElementById(
-              'btnCast'
-            );
+    /*
+     * ------------------------------------------------------------
+     * ENVIO PARA FLUTTER
+     * ------------------------------------------------------------
+     */
 
-          if (cast) {
-            cast.classList.remove(
-              'd-none'
-            );
+    function enviarMidia(
+      abrirMenu
+    ) {
 
-            cast.innerHTML =
-              '<i class="bi bi-cast me-1"></i> Transmitir';
+      var info =
+        obterMidiaReal();
 
-            if (
-              !cast.dataset.configurado
-            ) {
-              cast.dataset.configurado =
-                'true';
 
-              cast.onclick =
-                function(e) {
-                  e.preventDefault();
+      if (!info.url) {
 
-                  enviarMidia(true);
-                };
-            }
-          }
-        },
-        300
-      );
+        console.log(
+          '[CONSERLAR CAST] Nenhuma mídia real encontrada.'
+        );
 
-      /*
-       * ------------------------------------------------------------
-       * MONITORAMENTO
-       * ------------------------------------------------------------
-       */
+        return;
+      }
 
-      setInterval(
-        function() {
-          enviarMidia(false);
-        },
-        1000
-      );
 
-      /*
-       * ------------------------------------------------------------
-       * MUTATION OBSERVER
-       * ------------------------------------------------------------
-       */
+      if (
+        info.url === ultimoUrl &&
+        info.tipo === ultimoTipo &&
+        !abrirMenu
+      ) {
 
-      try {
-        var observer =
-          new MutationObserver(
-            function() {
-              configurarMenuHorizontal();
-              enviarMidia(false);
-            }
-          );
+        return;
+      }
 
-        if (document.body) {
-          observer.observe(
-            document.body,
-            {
-              childList: true,
-              subtree: true,
-              attributes: true,
-              attributeFilter: [
-                'src',
-                'data-src',
-                'data-image',
-                'data-url',
-                'class',
-                'style'
-              ]
-            }
-          );
-        }
-      } catch(e) {}
 
-      /*
-       * ------------------------------------------------------------
-       * EVENTOS DE VÍDEO
-       * ------------------------------------------------------------
-       */
+      ultimoUrl =
+        info.url;
 
-      document.addEventListener(
-        'loadedmetadata',
-        function() {
-          enviarMidia(false);
-        },
-        true
-      );
+      ultimoTipo =
+        info.tipo;
 
-      document.addEventListener(
-        'play',
-        function() {
-          enviarMidia(false);
-        },
-        true
-      );
+
+      info.abrirMenu =
+        !!abrirMenu;
+
 
       console.log(
-        '[CONSERLAR] Configuração concluída.'
+        '[CONSERLAR CAST] MÍDIA REAL:',
+        info.tipo,
+        info.url
       );
 
-    })();
+
+      if (
+        window.AndroidCastBridge
+      ) {
+
+        window.AndroidCastBridge.postMessage(
+          JSON.stringify(info)
+        );
+      }
+    }
+
+
+    /*
+     * ------------------------------------------------------------
+     * BOTÃO FULLSCREEN
+     * ------------------------------------------------------------
+     */
+
+    setInterval(
+      function() {
+
+        var full =
+          document.getElementById(
+            'btnFull'
+          );
+
+
+        if (full) {
+
+          full.innerHTML =
+            '<i class="bi bi-fullscreen"></i> Full';
+
+
+          if (
+            !full.dataset.configurado
+          ) {
+
+            full.dataset.configurado =
+              'true';
+
+
+            full.onclick =
+              function(e) {
+
+                e.preventDefault();
+
+
+                window.location.href =
+                  'app://full_clicked';
+              };
+          }
+        }
+
+      },
+      300
+    );
+
+
+    /*
+     * ------------------------------------------------------------
+     * BOTÃO CAST
+     * ------------------------------------------------------------
+     */
+
+    setInterval(
+      function() {
+
+        var cast =
+          document.getElementById(
+            'btnCast'
+          );
+
+
+        if (cast) {
+
+          cast.classList.remove(
+            'd-none'
+          );
+
+
+          cast.innerHTML =
+            '<i class="bi bi-cast me-1"></i> Transmitir';
+
+
+          if (
+            !cast.dataset.configurado
+          ) {
+
+            cast.dataset.configurado =
+              'true';
+
+
+            cast.onclick =
+              function(e) {
+
+                e.preventDefault();
+
+                enviarMidia(true);
+              };
+          }
+        }
+
+      },
+      300
+    );
+
+
+    /*
+     * ------------------------------------------------------------
+     * MONITORAMENTO
+     * ------------------------------------------------------------
+     */
+
+    setInterval(
+      function() {
+
+        /*
+         * Primeiro garante que o vídeo
+         * está usando o MP4 direto.
+         */
+        ajustarVideosParaIos();
+
+        /*
+         * Depois detecta a mídia.
+         */
+        enviarMidia(false);
+
+      },
+      1000
+    );
+
+
+    /*
+     * ------------------------------------------------------------
+     * MUTATION OBSERVER
+     * ------------------------------------------------------------
+     */
+
+    try {
+
+      var observer =
+        new MutationObserver(
+          function() {
+
+            configurarMenuHorizontal();
+
+            /*
+             * O site pode criar um novo
+             * <video> dinamicamente.
+             */
+            ajustarVideosParaIos();
+
+            enviarMidia(false);
+          }
+        );
+
+
+      if (document.body) {
+
+        observer.observe(
+          document.body,
+          {
+            childList: true,
+
+            subtree: true,
+
+            attributes: true,
+
+            attributeFilter: [
+              'src',
+              'data-src',
+              'data-image',
+              'data-url',
+              'class',
+              'style'
+            ]
+          }
+        );
+      }
+
+    } catch(e) {}
+
+
+    /*
+     * ------------------------------------------------------------
+     * EVENTOS DE VÍDEO
+     * ------------------------------------------------------------
+     */
+
+    document.addEventListener(
+      'loadedmetadata',
+      function() {
+
+        ajustarVideosParaIos();
+
+        enviarMidia(false);
+
+      },
+      true
+    );
+
+
+    document.addEventListener(
+      'play',
+      function() {
+
+        ajustarVideosParaIos();
+
+        enviarMidia(false);
+
+      },
+      true
+    );
+
+
+    console.log(
+      '[CONSERLAR] Configuração concluída.'
+    );
+
+  })();
   ''');
   }
 
