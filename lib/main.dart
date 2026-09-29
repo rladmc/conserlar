@@ -957,7 +957,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
   @override
   void initState() {
     super.initState();
-    _protegerTela();
+    //_protegerTela();
 
     WidgetsBinding.instance.addObserver(this);
 
