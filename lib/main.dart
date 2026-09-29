@@ -12,7 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:no_screenshot/no_screenshot.dart';
 import 'package:flutter_to_airplay/flutter_to_airplay.dart';
 //import 'package:flutter_ios_airplay/flutter_ios_airplay.dart';
-import 'package:dlna_dart/dlna.dart';
+//import 'package:dlna_dart/dlna.dart';
 import 'dart:async';
 
 
@@ -2467,11 +2467,11 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
                 leading: const Icon(Icons.airplay, color: Colors.blueAccent),
                 title: const Text(
                   'AirPlay',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                 ),
                 trailing: SizedBox(
-                  width: 60,
-                  height: 50,
+                  width: 50,
+                  height: 40,
                   child: AirPlayRoutePickerView(
                     tintColor: Colors.blueAccent,
                     activeTintColor: Colors.greenAccent,
@@ -2479,7 +2479,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
                   ),
                 ),
               ),
-              const Divider(color: Colors.grey),
+             // const Divider(color: Colors.grey),
             ],
 
             // Lista padrão de dispositivos DLNA / Bonsoir (Chromecast/Outros)
@@ -3086,15 +3086,6 @@ class _BonsoirDeviceListWidgetState
   BonsoirDiscovery? _chromecastDiscovery;
 
   // ============================================================
-  // DLNA - SOMENTE IOS
-  // ============================================================
-
-  DLNAManager? _iosDlnaManager;
-
-  StreamSubscription<
-      Map<String, dynamic>>? _iosDlnaSubscription;
-
-  // ============================================================
   // DISPOSITIVOS ENCONTRADOS
   // ============================================================
 
@@ -3191,147 +3182,16 @@ class _BonsoirDeviceListWidgetState
     // ------------------------------------------------------------
     // 2. DLNA
     //
-    // SOMENTE IOS
+    // O DLNA será descoberto pelo próprio dart_cast através
+    // do DlnaDiscoveryProvider configurado no CastService.
+    //
+    // Não usamos dlna_dart aqui.
     // ------------------------------------------------------------
 
-    if (Platform.isIOS) {
-      await _startIosDlnaDiscovery();
-    }
-  }
-
-  // ============================================================
-  // DISCOVERY DLNA IOS
-  // ============================================================
-
-  Future<void> _startIosDlnaDiscovery() async {
-
-    try {
-
-      debugPrint(
-        '[DLNA IOS] Iniciando discovery via dlna_dart...',
-      );
-
-      _iosDlnaManager = DLNAManager();
-
-      final deviceManager =
-      await _iosDlnaManager!.start(
-        reusePort: true,
-      );
-
-      _iosDlnaSubscription =
-          deviceManager.devices.stream.listen(
-                (deviceMap) {
-
-              debugPrint(
-                '[DLNA IOS] Dispositivos encontrados: '
-                    '${deviceMap.length}',
-              );
-
-              for (final entry
-              in deviceMap.entries) {
-
-                final dlnaDevice = entry.value;
-
-                try {
-
-                  final info = dlnaDevice.info;
-
-                  final friendlyName =
-                  info.friendlyName.trim().isNotEmpty
-                      ? info.friendlyName.trim()
-                      : 'Dispositivo DLNA';
-
-                  final location =
-                  info.URLBase.trim();
-
-                  if (location.isEmpty) {
-                    debugPrint(
-                      '[DLNA IOS] Ignorando dispositivo '
-                          'sem URLBase: $friendlyName',
-                    );
-                    continue;
-                  }
-
-                  final uri = Uri.tryParse(location);
-
-                  if (uri == null ||
-                      uri.host.isEmpty) {
-                    debugPrint(
-                      '[DLNA IOS] URLBase inválida: $location',
-                    );
-                    continue;
-                  }
-
-                  final ip = uri.host;
-
-                  final port =
-                  uri.hasPort
-                      ? uri.port
-                      : 80;
-
-                  // Evita adicionar dispositivos que
-                  // não sejam MediaRenderer.
-                  final deviceType =
-                  info.deviceType.toLowerCase();
-
-                  final bool ehMediaRenderer =
-                      deviceType.contains('mediarenderer') ||
-                          info.serviceList.any(
-                                (service) =>
-                                service.toString()
-                                    .toLowerCase()
-                                    .contains('avtransport'),
-                          );
-
-                  if (!ehMediaRenderer) {
-
-                    debugPrint(
-                      '[DLNA IOS] Ignorando dispositivo '
-                          'que não parece MediaRenderer: '
-                          '$friendlyName',
-                    );
-
-                    continue;
-                  }
-
-                  final device = CastDevice(
-                    id: entry.key,
-                    name: friendlyName,
-                    address: InternetAddress(ip),
-                    port: port,
-                    protocol: CastProtocol.dlna,
-                  );
-
-                  _adicionarDispositivo(device);
-
-                  debugPrint(
-                    '[DLNA IOS] TV encontrada: '
-                        '$friendlyName | '
-                        '$ip:$port',
-                  );
-
-                } catch (e) {
-
-                  debugPrint(
-                    '[DLNA IOS] Erro processando dispositivo: $e',
-                  );
-                }
-              }
-            },
-            onError: (error) {
-
-              debugPrint(
-                '[DLNA IOS] Erro no stream de discovery: '
-                    '$error',
-              );
-            },
-          );
-
-    } catch (e) {
-
-      debugPrint(
-        '[DLNA IOS] ERRO AO INICIAR DISCOVERY: $e',
-      );
+    if (mounted) {
+      setState(() {
+        _isSearching = false;
+      });
     }
   }
 
@@ -3382,12 +3242,6 @@ class _BonsoirDeviceListWidgetState
   @override
   void dispose() {
 
-    _iosDlnaSubscription?.cancel();
-
-    try {
-      _iosDlnaManager?.stop();
-    } catch (_) {}
-
     try {
       _chromecastDiscovery?.stop();
     } catch (_) {}
@@ -3405,94 +3259,148 @@ class _BonsoirDeviceListWidgetState
     // ==========================================================
     // IOS
     //
-    // No iOS:
-    //   Bonsoir -> Chromecast
-    //   dlna_dart -> DLNA
+    // Chromecast -> Bonsoir
+    // DLNA       -> dart_cast
     //
-    // Não usamos CastService.startDiscovery() para DLNA.
     // ==========================================================
 
     if (Platform.isIOS) {
 
-      if (_foundDevices.isEmpty) {
+      return StreamBuilder<List<CastDevice>>(
+        stream:
+        widget.castService.startDiscovery(),
 
-        return Center(
-          child: Column(
-            mainAxisAlignment:
-            MainAxisAlignment.center,
-            children: [
+        builder:
+            (context, snapshot) {
 
-              const CircularProgressIndicator(
-                color: Color(0xFF00E676),
+          final devices =
+          <CastDevice>[];
+
+          // ----------------------------------------------------
+          // Dispositivos encontrados pelo dart_cast
+          // ----------------------------------------------------
+
+          if (snapshot.hasData) {
+
+            devices.addAll(
+              snapshot.data!,
+            );
+          }
+
+          // ----------------------------------------------------
+          // Chromecast encontrado pelo Bonsoir
+          // ----------------------------------------------------
+
+          for (final d
+          in _foundDevices) {
+
+            if (!devices.any(
+                  (x) =>
+              x.address.address ==
+                  d.address.address,
+            )) {
+
+              devices.add(d);
+            }
+          }
+
+          // ----------------------------------------------------
+          // Nenhum dispositivo
+          // ----------------------------------------------------
+
+          if (devices.isEmpty) {
+
+            return Center(
+              child: Column(
+                mainAxisAlignment:
+                MainAxisAlignment.center,
+
+                children: [
+
+                  const CircularProgressIndicator(
+                    color: Color(0xFF00E676),
+                  ),
+
+                  const SizedBox(
+                    height: 12,
+                  ),
+
+                  Text(
+                    _isSearching
+                        ? 'Procurando aparelhos na rede...'
+                        : 'Nenhum dispositivo encontrado',
+
+                    style:
+                    const TextStyle(
+                      color: Colors.grey,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
               ),
+            );
+          }
 
-              const SizedBox(
-                height: 12,
-              ),
+          // ----------------------------------------------------
+          // Lista
+          // ----------------------------------------------------
 
-              Text(
-                _isSearching
-                    ? 'Procurando aparelhos na rede...'
-                    : 'Nenhum dispositivo encontrado',
-                style: const TextStyle(
-                  color: Colors.grey,
-                  fontSize: 13,
+          return ListView.builder(
+            itemCount:
+            devices.length,
+
+            itemBuilder:
+                (context, index) {
+
+              final device =
+              devices[index];
+
+              return ListTile(
+
+                leading: Icon(
+                  device.protocol ==
+                      CastProtocol.dlna
+                      ? Icons.tv
+                      : Icons.cast,
+
+                  color:
+                  const Color(0xFF00E676),
                 ),
-              ),
-            ],
-          ),
-        );
-      }
 
-      return ListView.builder(
-        itemCount: _foundDevices.length,
-        itemBuilder:
-            (context, index) {
+                title: Text(
+                  device.name,
 
-          final device =
-          _foundDevices[index];
-
-          return ListTile(
-
-            leading: Icon(
-              device.protocol ==
-                  CastProtocol.dlna
-                  ? Icons.tv
-                  : Icons.cast,
-              color:
-              const Color(0xFF00E676),
-            ),
-
-            title: Text(
-              device.name,
-              style:
-              const TextStyle(
-                color: Colors.white,
-              ),
-            ),
-
-            subtitle: Text(
-              'Protocolo: '
-                  '${device.protocol.name.toUpperCase()}'
-                  ' • IP: '
-                  '${device.address.address}',
-              style:
-              const TextStyle(
-                color: Colors.grey,
-                fontSize: 11,
-              ),
-            ),
-
-            trailing:
-            const Icon(
-              Icons.cast_connected,
-              color: Colors.white70,
-            ),
-
-            onTap: () =>
-                widget.onDeviceSelected(
-                  device,
+                  style:
+                  const TextStyle(
+                    color: Colors.white,
+                  ),
                 ),
+
+                subtitle: Text(
+                  'Protocolo: '
+                      '${device.protocol.name.toUpperCase()}'
+                      ' • IP: '
+                      '${device.address.address}',
+
+                  style:
+                  const TextStyle(
+                    color: Colors.grey,
+                    fontSize: 11,
+                  ),
+                ),
+
+                trailing:
+                const Icon(
+                  Icons.cast_connected,
+                  color: Colors.white70,
+                ),
+
+                onTap: () =>
+                    widget.onDeviceSelected(
+                      device,
+                    ),
+              );
+            },
           );
         },
       );
@@ -3515,6 +3423,7 @@ class _BonsoirDeviceListWidgetState
         <CastDevice>[];
 
         if (snapshot.hasData) {
+
           devices.addAll(
             snapshot.data!,
           );
@@ -3528,6 +3437,7 @@ class _BonsoirDeviceListWidgetState
             x.address.address ==
                 d.address.address,
           )) {
+
             devices.add(d);
           }
         }
@@ -3578,14 +3488,19 @@ class _BonsoirDeviceListWidgetState
             return ListTile(
 
               leading:
-              const Icon(
-                Icons.cast,
+              Icon(
+                device.protocol ==
+                    CastProtocol.dlna
+                    ? Icons.tv
+                    : Icons.cast,
+
                 color:
-                Color(0xFF00E676),
+                const Color(0xFF00E676),
               ),
 
               title: Text(
                 device.name,
+
                 style:
                 const TextStyle(
                   color: Colors.white,
@@ -3608,8 +3523,7 @@ class _BonsoirDeviceListWidgetState
               trailing:
               const Icon(
                 Icons.cast_connected,
-                color:
-                Colors.white70,
+                color: Colors.white70,
               ),
 
               onTap: () =>
