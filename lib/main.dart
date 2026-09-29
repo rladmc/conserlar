@@ -13,6 +13,7 @@ import 'package:no_screenshot/no_screenshot.dart';
 import 'package:flutter_to_airplay/flutter_to_airplay.dart';
 //import 'package:flutter_ios_airplay/flutter_ios_airplay.dart';
 import 'package:dlna_dart/dlna.dart';
+import 'dart:async';
 
 
 void main() async {
@@ -796,6 +797,7 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
   }
 }
 
+
 class TelaDeEstudosSegura extends StatefulWidget {
 
   const TelaDeEstudosSegura({super.key});
@@ -818,6 +820,8 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
   String _currentMediaUrl = '';
   String _currentMediaTitle = '';
   String _currentMediaType = 'video';
+
+  dynamic _sessaoAtivaAtual;
 
   HttpServer? _localProxyServer;
   final int _localProxyPort = 8080;
@@ -2608,6 +2612,22 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       final targetDevice = device ?? _castService.activeSession?.device;
       if (targetDevice == null) return;
 
+      // =========================================================================
+      // LIMPEZA PRÉVIA: Garante que qualquer sessão anterior travada na TV seja morta
+      // =========================================================================
+      try {
+        if (_sessaoAtivaAtual != null) {
+          await _sessaoAtivaAtual.stop();
+          if (_sessaoAtivaAtual is DlnaSession) {
+            await _sessaoAtivaAtual.disconnect();
+          }
+        }
+      } catch (_) {}
+      _sessaoAtivaAtual = null;
+
+      await Future.delayed(const Duration(milliseconds: 500));
+      // =========================================================================
+
       debugPrint('');
       debugPrint('======================================');
       debugPrint('INICIANDO CAST (DIRETO BUNNY CDN)');
@@ -2624,12 +2644,9 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       if (_currentMediaType == 'image' || _currentMediaUrl.toLowerCase().endsWith('.jpg')) {
         debugPrint('IMAGEM DETECTADA. BUSCANDO LINK NA PLANILHA...');
 
-        // Chama a função que extrai o nome, bate no Apps Script e atualiza _currentMediaUrl
-        await _processarETransmitirImagem(_currentMediaUrl);
-
-        // Retorna aqui porque o próprio _processarETransmitirImagem já vai atualizar
-        // a URL e chamar o _enviarMidiaParaDispositivo novamente (ou seguir o fluxo).
-        //return;
+        // Passa o targetDevice atual para garantir que o cast continuará na TV correta
+        await _processarETransmitirImagem(_currentMediaUrl, targetDevice);
+        return;
       }
       // =========================================================================
 
@@ -2660,8 +2677,28 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
         throw Exception('A URL tratada não é uma mídia válida: $urlFinalParaCast');
       }
 
-      // Conecta ao dispositivo de Cast
-      final session = await _castService.connect(targetDevice);
+      // =========================================================================
+      // CONEXÃO INTELIGENTE: Verifica diretamente se é Smart TV DLNA (LG/Samsung)
+      // =========================================================================
+      var session;
+      bool ehDlna = targetDevice.name.toLowerCase().contains('lg') ||
+          targetDevice.name.toLowerCase().contains('samsung') ||
+          targetDevice.name.toLowerCase().contains('tv') ||
+          targetDevice.port != 8009;
+
+      if (ehDlna) {
+        debugPrint('[DLNA] Dispositivo reconhecido como Smart TV. Inicializando sessão DLNA...');
+        final dlnaSession = DlnaSession.fromDevice(targetDevice);
+        await dlnaSession.connect();
+        session = dlnaSession;
+      } else {
+        debugPrint('[CAST] Dispositivo Chromecast padrão. Conectando via CastService...');
+        session = await _castService.connect(targetDevice);
+      }
+      // =========================================================================
+
+      // ATRIBUI À VARIÁVEL DE SESSÃO ATIVA PARA O OVERLAY RECONHECER O DLNA
+      _sessaoAtivaAtual = session;
 
       // =========================================================================
       // DISPARO USANDO O OBJETIVO CastMedia DO package:dart_cast
@@ -2718,23 +2755,19 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
     }
   }
 
-  Future<void> _processarETransmitirImagem(String urlOriginal) async {
+  Future<void> _processarETransmitirImagem(String urlOriginal, CastDevice targetDevice) async {
     try {
-      // 1. Extrai o nome do arquivo da URL e decodifica caracteres (%20 -> espaço)
       final uri = Uri.parse(urlOriginal);
       final segmentos = uri.pathSegments;
       final nomeArquivoBruto = segmentos.isNotEmpty ? segmentos.last : '';
       final nomeDecodificado = Uri.decodeComponent(nomeArquivoBruto);
 
-      // 2. REMOVE A EXTENSÃO E O SUFIXO DE PÁGINA (ex: _page-0001.jpg, .jpg, etc.)
-      // Essa regex remove tudo a partir de "_page" ou do último ponto "." da extensão
       final regExp = RegExp(r'(_page-.*|\.[^./\?]+)$', caseSensitive: false);
       final nomeLimpo = nomeDecodificado.replaceAll(regExp, '').trim();
 
       debugPrint('NOME ORIGINAL: $nomeDecodificado');
-      debugPrint('NOME LIMPO PARA BUSCA NA COLUNA A: $nomeLimpo'); // Ex: INTERFACE WF106 SAMSUNG
+      debugPrint('NOME LIMPO PARA BUSCA NA COLUNA A: $nomeLimpo');
 
-      // 3. Requisição para o Apps Script passando o nome limpo
       final endpoint = Uri.parse('https://script.google.com/macros/s/AKfycbxWOaNg2iYseVQOk2ceIqVzeBKcbBOaW-oMtFe22YVPrpmKww2NY6qroSpgQe6jNAhq/exec?action=get_cast_link&nome=$nomeLimpo');
 
       final response = await http.get(endpoint);
@@ -2746,15 +2779,14 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
         if (linkColunaH != null && linkColunaH.isNotEmpty) {
           debugPrint('LINK DA COLUNA H OBTIDO COM SUCESSO: $linkColunaH');
 
-          // Atualiza o estado com o link limpo do Bunny, o nome limpo para o título e o tipo video
           setState(() {
             _currentMediaUrl = linkColunaH;
-            _currentMediaTitle = nomeLimpo; // Vai exibir "INTERFACE WF106 SAMSUNG" no overlay!
+            _currentMediaTitle = nomeLimpo;
             _currentMediaType = 'video';
           });
 
-          // Chama novamente o envio, agora com o link real do vídeo em mãos!
-          await _enviarMidiaParaDispositivo();
+          // Passa o device adiante para forçar a conexão na TV selecionada (ex: Samsung)
+          await _enviarMidiaParaDispositivo(targetDevice);
         } else {
           debugPrint('Nenhum link correspondente encontrado na Coluna A para: $nomeLimpo');
         }
@@ -2957,10 +2989,11 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 // ============================================================
   @override
   Widget build(BuildContext context) {
-    // Verifica se existe uma sessão de Chromecast ativa no momento
-    final sessaoAtiva = _castService.activeSession;
+    // Verifica se existe uma sessão ativa (seja do Chromecast ou a nossa sessão DLNA)
+    //final sessaoAtiva = _castService.activeSession ?? _sessaoAtivaAtual;
+    final sessaoAtiva = _sessaoAtivaAtual ?? _castService.activeSession;
 
-    // O overlay agora obedece à bandeira local para sumir instantaneamente no Stop
+    // O overlay agora obedece à bandeira local e valida se há alguma sessão conectada
     final bool estaTransmitindo = _estaTransmitindoCast && sessaoAtiva != null;
 
     return Scaffold(
@@ -2987,7 +3020,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
                 ),
               ),
 
-            // OVERLAY FLUTUANTE DE CONTROLE DO CHROMECAST
+            // OVERLAY FLUTUANTE DE CONTROLE (CHROMECAST & DLNA)
             if (estaTransmitindo)
               CastControllerOverlay(
                 mediaTitle: _currentMediaTitle.isNotEmpty ? _currentMediaTitle : 'Aula Conserlar',
@@ -3005,15 +3038,15 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
                     onResetUI: () => setState(() {
                       _isPlaying = true; // Reseta o estado padrão
                       _estaTransmitindoCast = false; // Desliga a bandeira e some com o flutuante na hora
-                      sessaoAtiva?.disconnect();
+                      _sessaoAtivaAtual = null; // Limpa a sessão ativa unificada
                     }),
                   );
                 },
                 onSeekBackward: () async {
-                  await mudarPosicao(sessaoAtiva, -10); // Mantido o seu método original
+                  await mudarPosicao(sessaoAtiva, -10); // Retrocede 10 segundos
                 },
                 onSeekForward: () async {
-                  await mudarPosicao(sessaoAtiva, 10);
+                  await mudarPosicao(sessaoAtiva, 10); // Avança 10 segundos
                 },
               ),
           ],
@@ -3045,7 +3078,25 @@ class _BonsoirDeviceListWidget
 
 class _BonsoirDeviceListWidgetState
     extends State<_BonsoirDeviceListWidget> {
+
+  // ============================================================
+  // CHROMECAST - BONSOIR
+  // ============================================================
+
   BonsoirDiscovery? _chromecastDiscovery;
+
+  // ============================================================
+  // DLNA - SOMENTE IOS
+  // ============================================================
+
+  DLNAManager? _iosDlnaManager;
+
+  StreamSubscription<
+      Map<String, dynamic>>? _iosDlnaSubscription;
+
+  // ============================================================
+  // DISPOSITIVOS ENCONTRADOS
+  // ============================================================
 
   final List<CastDevice> _foundDevices = [];
 
@@ -3058,96 +3109,420 @@ class _BonsoirDeviceListWidgetState
     _startDiscoveryUnified();
   }
 
-  void _startDiscoveryUnified() async {
-    _chromecastDiscovery =
-        BonsoirDiscovery(
-          type: '_googlecast._tcp',
-        );
+  // ============================================================
+  // DISCOVERY
+  // ============================================================
 
-    await _chromecastDiscovery!.initialize();
+  Future<void> _startDiscoveryUnified() async {
 
-    _chromecastDiscovery!
-        .eventStream!
-        .listen((event) {
-      if (event
-      is BonsoirDiscoveryServiceFoundEvent) {
-        event.service?.resolve(
-          _chromecastDiscovery!.serviceResolver,
-        );
-      } else if (event
-      is BonsoirDiscoveryServiceResolvedEvent) {
-        final service = event.service;
+    // ------------------------------------------------------------
+    // 1. CHROMECAST VIA BONSOIR
+    // ------------------------------------------------------------
 
-        if (service?.hostAddresses == null) {
-          return;
-        }
+    try {
+      _chromecastDiscovery = BonsoirDiscovery(
+        type: '_googlecast._tcp',
+      );
 
-        String? ip;
+      await _chromecastDiscovery!.initialize();
 
-        for (final addr
-        in service!.hostAddresses!) {
-          if (!addr.contains(':') &&
-              addr.split('.').length == 4) {
-            ip = addr;
-            break;
+      _chromecastDiscovery!
+          .eventStream!
+          .listen((event) {
+
+        if (event
+        is BonsoirDiscoveryServiceFoundEvent) {
+
+          event.service?.resolve(
+            _chromecastDiscovery!.serviceResolver,
+          );
+
+        } else if (event
+        is BonsoirDiscoveryServiceResolvedEvent) {
+
+          final service = event.service;
+
+          if (service?.hostAddresses == null) {
+            return;
           }
+
+          String? ip;
+
+          for (final addr
+          in service!.hostAddresses!) {
+
+            if (!addr.contains(':') &&
+                addr.split('.').length == 4) {
+              ip = addr;
+              break;
+            }
+          }
+
+          if (ip == null) {
+            return;
+          }
+
+          final name =
+          service.name.contains('.')
+              ? service.name.split('.').first
+              : service.name;
+
+          final device = CastDevice(
+            id: service.name,
+            name: name,
+            address: InternetAddress(ip),
+            port: service.port,
+            protocol: CastProtocol.chromecast,
+          );
+
+          _adicionarDispositivo(device);
         }
+      });
 
-        if (ip == null) return;
+      await _chromecastDiscovery!.start();
 
-        final name =
-        service.name.contains('.')
-            ? service.name
-            .split('.')
-            .first
-            : service.name;
+    } catch (e) {
 
-        final device = CastDevice(
-          id: service.name,
-          name: name,
-          address: InternetAddress(ip),
-          port: service.port,
-          protocol:
-          CastProtocol.chromecast,
+      debugPrint(
+        '[CHROMECAST] Erro no discovery Bonsoir: $e',
+      );
+    }
+
+    // ------------------------------------------------------------
+    // 2. DLNA
+    //
+    // SOMENTE IOS
+    // ------------------------------------------------------------
+
+    if (Platform.isIOS) {
+      await _startIosDlnaDiscovery();
+    }
+  }
+
+  // ============================================================
+  // DISCOVERY DLNA IOS
+  // ============================================================
+
+  Future<void> _startIosDlnaDiscovery() async {
+
+    try {
+
+      debugPrint(
+        '[DLNA IOS] Iniciando discovery via dlna_dart...',
+      );
+
+      _iosDlnaManager = DLNAManager();
+
+      final deviceManager =
+      await _iosDlnaManager!.start(
+        reusePort: true,
+      );
+
+      _iosDlnaSubscription =
+          deviceManager.devices.stream.listen(
+                (deviceMap) {
+
+              debugPrint(
+                '[DLNA IOS] Dispositivos encontrados: '
+                    '${deviceMap.length}',
+              );
+
+              for (final entry
+              in deviceMap.entries) {
+
+                final dlnaDevice = entry.value;
+
+                try {
+
+                  final info = dlnaDevice.info;
+
+                  final friendlyName =
+                  info.friendlyName.trim().isNotEmpty
+                      ? info.friendlyName.trim()
+                      : 'Dispositivo DLNA';
+
+                  final location =
+                  info.URLBase.trim();
+
+                  if (location.isEmpty) {
+                    debugPrint(
+                      '[DLNA IOS] Ignorando dispositivo '
+                          'sem URLBase: $friendlyName',
+                    );
+                    continue;
+                  }
+
+                  final uri = Uri.tryParse(location);
+
+                  if (uri == null ||
+                      uri.host.isEmpty) {
+                    debugPrint(
+                      '[DLNA IOS] URLBase inválida: $location',
+                    );
+                    continue;
+                  }
+
+                  final ip = uri.host;
+
+                  final port =
+                  uri.hasPort
+                      ? uri.port
+                      : 80;
+
+                  // Evita adicionar dispositivos que
+                  // não sejam MediaRenderer.
+                  final deviceType =
+                  info.deviceType.toLowerCase();
+
+                  final bool ehMediaRenderer =
+                      deviceType.contains('mediarenderer') ||
+                          info.serviceList.any(
+                                (service) =>
+                                service.toString()
+                                    .toLowerCase()
+                                    .contains('avtransport'),
+                          );
+
+                  if (!ehMediaRenderer) {
+
+                    debugPrint(
+                      '[DLNA IOS] Ignorando dispositivo '
+                          'que não parece MediaRenderer: '
+                          '$friendlyName',
+                    );
+
+                    continue;
+                  }
+
+                  final device = CastDevice(
+                    id: entry.key,
+                    name: friendlyName,
+                    address: InternetAddress(ip),
+                    port: port,
+                    protocol: CastProtocol.dlna,
+                  );
+
+                  _adicionarDispositivo(device);
+
+                  debugPrint(
+                    '[DLNA IOS] TV encontrada: '
+                        '$friendlyName | '
+                        '$ip:$port',
+                  );
+
+                } catch (e) {
+
+                  debugPrint(
+                    '[DLNA IOS] Erro processando dispositivo: $e',
+                  );
+                }
+              }
+            },
+            onError: (error) {
+
+              debugPrint(
+                '[DLNA IOS] Erro no stream de discovery: '
+                    '$error',
+              );
+            },
+          );
+
+    } catch (e) {
+
+      debugPrint(
+        '[DLNA IOS] ERRO AO INICIAR DISCOVERY: $e',
+      );
+    }
+  }
+
+  // ============================================================
+  // ADICIONAR DISPOSITIVO
+  // ============================================================
+
+  void _adicionarDispositivo(
+      CastDevice device) {
+
+    if (!mounted) {
+      return;
+    }
+
+    final index =
+    _foundDevices.indexWhere(
+          (d) =>
+      d.address.address ==
+          device.address.address,
+    );
+
+    setState(() {
+
+      if (index == -1) {
+
+        _foundDevices.add(device);
+
+        debugPrint(
+          '[DISCOVERY] Adicionado: '
+              '${device.name} '
+              '(${device.protocol.name}) '
+              '${device.address.address}:${device.port}',
         );
 
-        if (!_foundDevices.any(
-              (d) =>
-          d.address.address == ip,
-        ) &&
-            mounted) {
-          setState(() {
-            _foundDevices.add(device);
-            _isSearching = false;
-          });
-        }
-      }
-    });
+      } else {
 
-    await _chromecastDiscovery!.start();
+        _foundDevices[index] = device;
+      }
+
+      _isSearching = false;
+    });
   }
+
+  // ============================================================
+  // DISPOSE
+  // ============================================================
 
   @override
   void dispose() {
-    _chromecastDiscovery?.stop();
+
+    _iosDlnaSubscription?.cancel();
+
+    try {
+      _iosDlnaManager?.stop();
+    } catch (_) {}
+
+    try {
+      _chromecastDiscovery?.stop();
+    } catch (_) {}
 
     super.dispose();
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
+
+    // ==========================================================
+    // IOS
+    //
+    // No iOS:
+    //   Bonsoir -> Chromecast
+    //   dlna_dart -> DLNA
+    //
+    // Não usamos CastService.startDiscovery() para DLNA.
+    // ==========================================================
+
+    if (Platform.isIOS) {
+
+      if (_foundDevices.isEmpty) {
+
+        return Center(
+          child: Column(
+            mainAxisAlignment:
+            MainAxisAlignment.center,
+            children: [
+
+              const CircularProgressIndicator(
+                color: Color(0xFF00E676),
+              ),
+
+              const SizedBox(
+                height: 12,
+              ),
+
+              Text(
+                _isSearching
+                    ? 'Procurando aparelhos na rede...'
+                    : 'Nenhum dispositivo encontrado',
+                style: const TextStyle(
+                  color: Colors.grey,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      return ListView.builder(
+        itemCount: _foundDevices.length,
+        itemBuilder:
+            (context, index) {
+
+          final device =
+          _foundDevices[index];
+
+          return ListTile(
+
+            leading: Icon(
+              device.protocol ==
+                  CastProtocol.dlna
+                  ? Icons.tv
+                  : Icons.cast,
+              color:
+              const Color(0xFF00E676),
+            ),
+
+            title: Text(
+              device.name,
+              style:
+              const TextStyle(
+                color: Colors.white,
+              ),
+            ),
+
+            subtitle: Text(
+              'Protocolo: '
+                  '${device.protocol.name.toUpperCase()}'
+                  ' • IP: '
+                  '${device.address.address}',
+              style:
+              const TextStyle(
+                color: Colors.grey,
+                fontSize: 11,
+              ),
+            ),
+
+            trailing:
+            const Icon(
+              Icons.cast_connected,
+              color: Colors.white70,
+            ),
+
+            onTap: () =>
+                widget.onDeviceSelected(
+                  device,
+                ),
+          );
+        },
+      );
+    }
+
+    // ==========================================================
+    // ANDROID
+    //
+    // MANTÉM EXATAMENTE O DISCOVERY QUE JÁ FUNCIONA.
+    // ==========================================================
+
     return StreamBuilder<List<CastDevice>>(
       stream:
       widget.castService.startDiscovery(),
-      builder: (context, snapshot) {
+
+      builder:
+          (context, snapshot) {
+
         final devices =
         <CastDevice>[];
 
         if (snapshot.hasData) {
-          devices.addAll(snapshot.data!);
+          devices.addAll(
+            snapshot.data!,
+          );
         }
 
-        for (final d in _foundDevices) {
+        for (final d
+        in _foundDevices) {
+
           if (!devices.any(
                 (x) =>
             x.address.address ==
@@ -3158,21 +3533,27 @@ class _BonsoirDeviceListWidgetState
         }
 
         if (devices.isEmpty) {
+
           return Center(
             child: Column(
               mainAxisAlignment:
               MainAxisAlignment.center,
+
               children: [
+
                 const CircularProgressIndicator(
                   color: Color(0xFF00E676),
                 ),
+
                 const SizedBox(
                   height: 12,
                 ),
+
                 Text(
                   _isSearching
                       ? 'Procurando aparelhos na rede...'
                       : 'Nenhum dispositivo encontrado',
+
                   style:
                   const TextStyle(
                     color: Colors.grey,
@@ -3185,17 +3566,24 @@ class _BonsoirDeviceListWidgetState
         }
 
         return ListView.builder(
-          itemCount: devices.length,
+          itemCount:
+          devices.length,
+
           itemBuilder:
               (context, index) {
+
             final device =
             devices[index];
 
             return ListTile(
-              leading: const Icon(
+
+              leading:
+              const Icon(
                 Icons.cast,
-                color: Color(0xFF00E676),
+                color:
+                Color(0xFF00E676),
               ),
+
               title: Text(
                 device.name,
                 style:
@@ -3203,22 +3591,27 @@ class _BonsoirDeviceListWidgetState
                   color: Colors.white,
                 ),
               ),
+
               subtitle: Text(
                 'Protocolo: '
-                    '${device.protocol.name.toUpperCase()} '
-                    '• IP: '
+                    '${device.protocol.name.toUpperCase()}'
+                    ' • IP: '
                     '${device.address.address}',
+
                 style:
                 const TextStyle(
                   color: Colors.grey,
                   fontSize: 11,
                 ),
               ),
+
               trailing:
               const Icon(
                 Icons.cast_connected,
-                color: Colors.white70,
+                color:
+                Colors.white70,
               ),
+
               onTap: () =>
                   widget.onDeviceSelected(
                     device,
@@ -3339,22 +3732,36 @@ class CastControllerOverlay extends StatelessWidget {
 Future<void> alternarPlayPause(dynamic session, bool isPlayingAtual) async {
   if (session == null) return;
   try {
-    if (isPlayingAtual) {
-      await session.pause();
+    if (session is DlnaSession) {
+      if (isPlayingAtual) {
+        await session.pause();
+      } else {
+        await session.play();
+      }
     } else {
-      await session.play();
+      // Chromecast padrão
+      if (isPlayingAtual) {
+        await session.pause();
+      } else {
+        await session.play();
+      }
     }
   } catch (e) {
-    debugPrint('ERRO PLAY/PAUSE CAST: $e');
+    debugPrint('ERRO PLAY/PAUSE CAST/DLNA: $e');
   }
 }
 
 Future<void> pararTransmissao(dynamic session) async {
   if (session == null) return;
   try {
-    await session.stop();
+    if (session is DlnaSession) {
+      await session.stop();
+      await session.disconnect();
+    } else {
+      await session.stop();
+    }
   } catch (e) {
-    debugPrint('ERRO PARAR CAST: $e');
+    debugPrint('ERRO PARAR CAST/DLNA: $e');
   }
 }
 
@@ -3365,22 +3772,22 @@ Future<void> pararEFecharTransmissao({
 }) async {
   try {
     if (session != null) {
-      await session.stop();
+      if (session is DlnaSession) {
+        await session.stop();
+        await session.disconnect();
+      } else {
+        await session.stop();
+      }
     }
 
-    // 1. Força o reset do estado da UI para o Flutter destruir o overlay de botões imediatamente
     onResetUI();
 
-    // 2. Injeta script no WebView para restaurar os elementos web ocultos e tirar a tela preta
-    // Injeta script no WebView para restaurar os elementos web e varrer QUALQUER lixo de cast da tela
     await webViewController.runJavaScript("""
-      // 1. Remove globalmente QUALQUER mensagem de cast que tenha sobrado em qualquer lugar da página
       var todasAsMensagens = document.querySelectorAll('.cast-msg');
       for (var m = 0; m < todasAsMensagens.length; m++) {
         todasAsMensagens[m].remove();
       }
 
-      // 2. Função para restaurar os elementos principais
       var wrapper = document.getElementById('playerWrapper');
       var viewer = document.getElementById('mediaViewer');
       var apostila = document.getElementById('imagemApostila');
