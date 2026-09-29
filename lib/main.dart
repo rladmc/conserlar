@@ -2539,7 +2539,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 * CAST
 * ============================================================
 */
-
+  
   Future<void> _enviarMidiaParaAirPlay() async {
     if (_currentMediaUrl.isEmpty ||
         !_pareceSerMidiaValida(
@@ -2618,27 +2618,50 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
     );
 
     // ============================================================
-    // 5. ENVIA O MP4 PARA UM <VIDEO> EXCLUSIVO DO AIRPLAY
+    // 5. TESTE DO PLAYER NATIVO DO iOS
     //
-    // IMPORTANTE:
-    // - NÃO usa o vídeo do site
-    // - NÃO usa display:none
-    // - NÃO abre outro picker
+    // NÃO criamos mais um <video>.
     //
-    // O AirPlayRoutePickerView já é responsável pela seleção
-    // da TV.
+    // NÃO criamos vídeo 1x1.
+    //
+    // NÃO usamos:
+    //   playsinline
+    //   webkit-playsinline
+    //   x-webkit-airplay
+    //
+    // A ideia agora é deixar o WKWebView/iOS assumir
+    // a reprodução do MP4.
     // ============================================================
     try {
       await controller.runJavaScript('''
       (function() {
 
-        console.log('[AIRPLAY] Preparando player dedicado...');
+        console.log(
+          '[AIRPLAY] ======================================='
+        );
 
-        // Remove player AirPlay anterior, se existir.
+        console.log(
+          '[AIRPLAY] PREPARANDO PLAYER NATIVO DO IOS'
+        );
+
+        console.log(
+          '[AIRPLAY] ======================================='
+        );
+
+        // ======================================================
+        // REMOVE QUALQUER PLAYER DEDICADO ANTIGO
+        // ======================================================
         var antigo =
-            document.getElementById('conserlarAirPlayVideo');
+            document.getElementById(
+              'conserlarAirPlayVideo'
+            );
 
         if (antigo) {
+
+          console.log(
+            '[AIRPLAY] Removendo player dedicado antigo.'
+          );
+
           try {
             antigo.pause();
           } catch (e) {}
@@ -2647,204 +2670,185 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
         }
 
         // ======================================================
-        // Cria um VIDEO exclusivo para o AirPlay
+        // PREPARA OS VÍDEOS EXISTENTES DO SITE
         // ======================================================
-        var video = document.createElement('video');
-
-        video.id = 'conserlarAirPlayVideo';
-
-        // Não usamos display:none.
-        // Mantemos o elemento no DOM, mas praticamente invisível.
-        video.style.position = 'fixed';
-        video.style.left = '0px';
-        video.style.top = '0px';
-        video.style.width = '1px';
-        video.style.height = '1px';
-        video.style.opacity = '0.01';
-        video.style.pointerEvents = 'none';
-        video.style.zIndex = '-9999';
-
-        // ======================================================
-        // Configurações necessárias para WebKit / AirPlay
-        // ======================================================
-        video.setAttribute(
-          'playsinline',
-          'true'
-        );
-
-        video.setAttribute(
-          'webkit-playsinline',
-          'true'
-        );
-
-        video.setAttribute(
-          'x-webkit-airplay',
-          'allow'
-        );
-
-        video.playsInline = true;
-
-        // Permite reprodução externa.
-        video.allowsExternalPlayback = true;
-
-        video.controls = false;
-        video.autoplay = false;
-        video.muted = false;
-
-        // ======================================================
-        // Eventos para diagnóstico
-        // ======================================================
-        video.addEventListener(
-          'loadstart',
-          function() {
-            console.log(
-              '[AIRPLAY] loadstart'
-            );
-          }
-        );
-
-        video.addEventListener(
-          'loadedmetadata',
-          function() {
-            console.log(
-              '[AIRPLAY] metadata carregada'
-            );
-
-            console.log(
-              '[AIRPLAY] duração: ' +
-              video.duration
-            );
-          }
-        );
-
-        video.addEventListener(
-          'canplay',
-          function() {
-            console.log(
-              '[AIRPLAY] vídeo pronto para reprodução'
-            );
-          }
-        );
-
-        video.addEventListener(
-          'playing',
-          function() {
-            console.log(
-              '[AIRPLAY] vídeo começou a tocar'
-            );
-          }
-        );
-
-        video.addEventListener(
-          'pause',
-          function() {
-            console.log(
-              '[AIRPLAY] vídeo pausado'
-            );
-          }
-        );
-
-        video.addEventListener(
-          'error',
-          function() {
-
-            var codigo =
-                video.error
-                    ? video.error.code
-                    : 'desconhecido';
-
-            var mensagem =
-                video.error
-                    ? video.error.message
-                    : '';
-
-            console.log(
-              '[AIRPLAY] ERRO VIDEO: ' +
-              codigo +
-              ' ' +
-              mensagem
-            );
-          }
-        );
-
-        // ======================================================
-        // URL DIRETA DO MP4
-        // ======================================================
-        video.src = '$urlFinalParaAirPlay';
-
-        // Adiciona ao DOM.
-        document.body.appendChild(video);
+        var videos =
+            document.querySelectorAll('video');
 
         console.log(
-          '[AIRPLAY] MP4 inserido no player dedicado'
+          '[AIRPLAY] Vídeos encontrados no site: ' +
+          videos.length
         );
 
-        console.log(
-          '[AIRPLAY] URL: ' +
-          video.src
-        );
+        for (
+          var i = 0;
+          i < videos.length;
+          i++
+        ) {
 
-        // ======================================================
-        // Carrega o vídeo
-        // ======================================================
-        video.load();
-
-        // ======================================================
-        // Aguarda o vídeo estar pronto e inicia reprodução.
-        //
-        // NÃO chamamos:
-        // webkitShowPlaybackTargetPicker()
-        //
-        // pois o AirPlayRoutePickerView do Flutter já seleciona
-        // a rota AirPlay.
-        // ======================================================
-        var iniciarVideo = function() {
+          var video = videos[i];
 
           console.log(
-            '[AIRPLAY] Tentando iniciar reprodução...'
+            '[AIRPLAY] Preparando vídeo existente:',
+            video
           );
 
-          video.play()
-            .then(function() {
+          /*
+           * Remove o modo inline.
+           */
+          video.removeAttribute(
+            'playsinline'
+          );
 
-              console.log(
-                '[AIRPLAY] PLAY iniciado com sucesso'
-              );
+          video.removeAttribute(
+            'webkit-playsinline'
+          );
 
-            })
-            .catch(function(err) {
+          try {
+            video.playsInline = false;
+          } catch (e) {}
 
-              console.log(
-                '[AIRPLAY] ERRO NO PLAY: ' +
-                err
-              );
+          /*
+           * Permite os controles do vídeo.
+           */
+          video.controls = true;
 
-            });
-        };
+          /*
+           * Permite reprodução externa quando suportada.
+           */
+          try {
+            video.allowsExternalPlayback = true;
+          } catch (e) {}
 
-        if (
-          video.readyState >= 2
-        ) {
-          iniciarVideo();
+          console.log(
+            '[AIRPLAY] playsInline:',
+            video.playsInline
+          );
 
-        } else {
-
-          video.addEventListener(
-            'canplay',
-            iniciarVideo,
-            { once: true }
+          console.log(
+            '[AIRPLAY] src:',
+            video.currentSrc || video.src
           );
         }
+
+        // ======================================================
+        // TENTA USAR O VÍDEO REAL DO SITE
+        // ======================================================
+        var videoPrincipal = null;
+
+        /*
+         * Primeiro tenta o vídeo visível.
+         */
+        for (
+          var j = 0;
+          j < videos.length;
+          j++
+        ) {
+
+          var candidato = videos[j];
+
+          var rect =
+              candidato.getBoundingClientRect();
+
+          var style =
+              window.getComputedStyle(
+                candidato
+              );
+
+          if (
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            rect.width > 10 &&
+            rect.height > 10
+          ) {
+
+            videoPrincipal =
+              candidato;
+
+            break;
+          }
+        }
+
+        if (videoPrincipal) {
+
+          console.log(
+            '[AIRPLAY] Vídeo principal encontrado.'
+          );
+
+          /*
+           * Não trocamos a URL do vídeo do site.
+           *
+           * Deixamos o player atual ser utilizado.
+           */
+
+          try {
+
+            if (
+              videoPrincipal.paused
+            ) {
+
+              console.log(
+                '[AIRPLAY] Tentando iniciar vídeo existente...'
+              );
+
+              videoPrincipal.play()
+                .then(function() {
+
+                  console.log(
+                    '[AIRPLAY] PLAY DO VÍDEO EXISTENTE OK.'
+                  );
+
+                })
+                .catch(function(err) {
+
+                  console.log(
+                    '[AIRPLAY] PLAY DO VÍDEO EXISTENTE FALHOU:',
+                    err
+                  );
+
+                });
+
+            }
+
+          } catch (e) {
+
+            console.log(
+              '[AIRPLAY] Erro ao iniciar vídeo:',
+              e
+            );
+
+          }
+
+          return;
+        }
+
+        // ======================================================
+        // SE NÃO EXISTIR VÍDEO VISÍVEL,
+        // NAVEGA DIRETAMENTE PARA O MP4
+        // ======================================================
+
+        console.log(
+          '[AIRPLAY] Nenhum vídeo visível encontrado.'
+        );
+
+        console.log(
+          '[AIRPLAY] Abrindo MP4 diretamente no WebView...'
+        );
+
+        window.location.href =
+          '$urlFinalParaAirPlay';
 
       })();
     ''');
 
       debugPrint(
-        '[AIRPLAY] Player dedicado criado com sucesso.',
+        '[AIRPLAY] Solicitação de reprodução nativa enviada.',
       );
+
     } catch (e) {
+
       debugPrint(
-        '[AIRPLAY] ERRO AO INJETAR PLAYER: $e',
+        '[AIRPLAY] ERRO AO preparar player nativo: $e',
       );
 
       if (mounted) {
@@ -2865,7 +2869,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       ) async {
     try {
       debugPrint(
-        '[AIRPLAY] PROCESSANDO IMAGEM:',
+        '[AIRPLAY] PROCESSANDO IMAGEM',
       );
 
       debugPrint(
@@ -2893,6 +2897,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 
       // ==========================================================
       // 2. LIMPA O NOME
+      //
       // Remove:
       // _page-...
       // extensão
@@ -2918,9 +2923,9 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       // 3. CONSULTA A PLANILHA
       // ==========================================================
       final endpoint = Uri.parse(
-          'https://script.google.com/macros/s/'
-              'AKfycbxWOaNg2iYseVQOk2ceIqVzeBKcbBOaW-oMtFe22YVPrpmKww2NY6qroSpgQe6jNAhq/'
-              'exec'
+        'https://script.google.com/macros/s/'
+            'AKfycbxWOaNg2iYseVQOk2ceIqVzeBKcbBOaW-oMtFe22YVPrpmKww2NY6qroSpgQe6jNAhq/'
+            'exec',
       ).replace(
         queryParameters: {
           'action': 'get_cast_link',
@@ -2944,71 +2949,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       // ==========================================================
       // 4. RESPOSTA OK
       // ==========================================================
-      if (response.statusCode == 200) {
-
-        final data =
-        jsonDecode(
-          response.body,
-        );
-
-        final String? linkColunaH =
-        data['link_cast'];
-
-        debugPrint(
-          '[AIRPLAY] LINK COLUNA H: '
-              '${linkColunaH ?? 'NULL'}',
-        );
-
-        if (linkColunaH != null &&
-            linkColunaH.isNotEmpty) {
-
-          // ======================================================
-          // 5. ATUALIZA A MÍDIA ATUAL
-          // ======================================================
-          setState(() {
-            _currentMediaUrl =
-                linkColunaH;
-
-            _currentMediaTitle =
-                nomeLimpo;
-
-            _currentMediaType =
-            'video';
-          });
-
-          debugPrint(
-            '[AIRPLAY] LINK DA COLUNA H OBTIDO.',
-          );
-
-          // ======================================================
-          // 6. VOLTA PARA O FLUXO NORMAL
-          //
-          // Agora _enviarMidiaParaAirPlay()
-          // receberá o link direto e fará:
-          //
-          // URL → Bunny MP4 → VIDEO → AIRPLAY
-          // ======================================================
-          await _enviarMidiaParaAirPlay();
-
-        } else {
-
-          debugPrint(
-            '[AIRPLAY] LINK_CAST NÃO ENCONTRADO.',
-          );
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Não foi encontrado o vídeo da apostila.',
-                ),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        }
-
-      } else {
+      if (response.statusCode != 200) {
 
         debugPrint(
           '[AIRPLAY] ERRO HTTP: '
@@ -3026,7 +2967,87 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
             ),
           );
         }
+
+        return;
       }
+
+      // ==========================================================
+      // 5. DECODIFICA JSON
+      // ==========================================================
+      final data =
+      jsonDecode(
+        response.body,
+      );
+
+      final String? linkColunaH =
+      data['link_cast'];
+
+      debugPrint(
+        '[AIRPLAY] LINK COLUNA H: '
+            '${linkColunaH ?? 'NULL'}',
+      );
+
+      // ==========================================================
+      // 6. VERIFICA LINK
+      // ==========================================================
+      if (linkColunaH == null ||
+          linkColunaH.isEmpty) {
+
+        debugPrint(
+          '[AIRPLAY] LINK_CAST NÃO ENCONTRADO.',
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Não foi encontrado o vídeo da apostila.',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+
+        return;
+      }
+
+      // ==========================================================
+      // 7. ATUALIZA A MÍDIA ATUAL
+      // ==========================================================
+      setState(() {
+
+        _currentMediaUrl =
+            linkColunaH;
+
+        _currentMediaTitle =
+            nomeLimpo;
+
+        _currentMediaType =
+        'video';
+      });
+
+      debugPrint(
+        '[AIRPLAY] LINK DA COLUNA H OBTIDO.',
+      );
+
+      debugPrint(
+        '[AIRPLAY] NOVA URL: $linkColunaH',
+      );
+
+      // ==========================================================
+      // 8. VOLTA PARA O FLUXO NORMAL
+      //
+      // imagem
+      //   ↓
+      // coluna H
+      //   ↓
+      // vídeo
+      //   ↓
+      // Bunny → MP4
+      //   ↓
+      // tentativa de player nativo iOS
+      // ==========================================================
+      await _enviarMidiaParaAirPlay();
 
     } catch (e) {
 
@@ -3036,7 +3057,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text(
               'Erro ao preparar vídeo para AirPlay.',
             ),
