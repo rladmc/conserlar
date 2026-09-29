@@ -966,7 +966,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 
     if (WebViewPlatform.instance is WebKitWebViewPlatform) {
       params = WebKitWebViewControllerCreationParams(
-        allowsInlineMediaPlayback: true, // Impede o player nativo de tela cheia no iOS
+        allowsInlineMediaPlayback: false, // Impede o player nativo de tela cheia no iOS
         mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
       );
     } else {
@@ -2539,7 +2539,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 * CAST
 * ============================================================
 */
-  
+
   Future<void> _enviarMidiaParaAirPlay() async {
     if (_currentMediaUrl.isEmpty ||
         !_pareceSerMidiaValida(
