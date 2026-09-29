@@ -14,7 +14,7 @@ import 'package:flutter_to_airplay/flutter_to_airplay.dart';
 //import 'package:flutter_ios_airplay/flutter_ios_airplay.dart';
 import 'package:dlna_dart/dlna.dart';
 import 'dart:async';
-
+import 'package:video_player/video_player.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,19 +24,111 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+// ==========================================
+// APLICAÇÃO PRINCIPAL COM SPLASH SCREEN
+// ==========================================
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  bool _mostrarSplash = true;
+
+  @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: MainMenuView(),
+      home: _mostrarSplash
+          ? SplashScreenVideo(
+        onFinished: () {
+          setState(() {
+            _mostrarSplash = false;
+          });
+        },
+      )
+          : const MainMenuView(),
     );
   }
 }
 
+// ==========================================
+// WIDGET DA SPLASH SCREEN COM VÍDEO E DUPLO CLIQUE
+// ==========================================
+class SplashScreenVideo extends StatefulWidget {
+  final VoidCallback onFinished;
 
+  const SplashScreenVideo({super.key, required this.onFinished});
+
+  @override
+  State<SplashScreenVideo> createState() => _SplashScreenVideoState();
+}
+
+class _SplashScreenVideoState extends State<SplashScreenVideo> {
+  late VideoPlayerController _controller;
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Certifique-se de registrar 'assets/videos/' no pubspec.yaml
+    _controller = VideoPlayerController.asset('assets/splash_video.mp4')
+      ..initialize().then((_) {
+        setState(() {
+          _isInitialized = true;
+        });
+        _controller.play();
+        _controller.setLooping(false);
+      });
+
+    _controller.addListener(_videoListener);
+  }
+
+  void _videoListener() {
+    if (_controller.value.isCompleted) {
+      widget.onFinished();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_videoListener);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: GestureDetector(
+        // Corta/pula a splash instantaneamente com um duplo clique
+        onDoubleTap: () {
+          _controller.pause();
+          widget.onFinished();
+        },
+        child: Center(
+          child: _isInitialized
+              ? SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: _controller.value.size.width,
+                height: _controller.value.size.height,
+                child: VideoPlayer(_controller),
+              ),
+            ),
+          )
+              : const CircularProgressIndicator(
+            color: Color(0xFF00C853),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 // ==========================================
 // TELA DO MENU PRINCIPAL
@@ -2509,100 +2601,509 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 */
 
   Future<void> _enviarMidiaParaAirPlay() async {
-    if (_currentMediaUrl.isEmpty || !_pareceSerMidiaValida(_currentMediaUrl, _currentMediaType)) {
+    if (_currentMediaUrl.isEmpty ||
+        !_pareceSerMidiaValida(
+          _currentMediaUrl,
+          _currentMediaType,
+        )) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nenhuma mídia real carregada!'), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text('Nenhuma mídia real carregada!'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
-    // 1. Se for imagem (apostila), busca o link da Coluna H igual ao Cast
-    if (_currentMediaType == 'image' || _currentMediaUrl.toLowerCase().endsWith('.jpg')) {
-      debugPrint('[AIRPLAY] IMAGEM DETECTADA. BUSCANDO LINK NA PLANILHA...');
-      await _processarETransmitirImagemParaAirPlay(_currentMediaUrl);
+    // ============================================================
+    // 1. IMAGEM / APOSTILA
+    // Busca o link da Coluna H e transforma em vídeo
+    // ============================================================
+    if (_currentMediaType == 'image' ||
+        _currentMediaUrl.toLowerCase().endsWith('.jpg')) {
+      debugPrint(
+        '[AIRPLAY] IMAGEM DETECTADA. BUSCANDO LINK NA PLANILHA...',
+      );
+
+      await _processarETransmitirImagemParaAirPlay(
+        _currentMediaUrl,
+      );
+
       return;
     }
 
+    // ============================================================
+    // 2. PREPARA A URL FINAL
+    // ============================================================
     String urlFinalParaAirPlay = _currentMediaUrl;
 
-    // 2. Converte o embed do Bunny para o MP4 direto da CDN
-    if (urlFinalParaAirPlay.contains('mediadelivery.net/embed/')) {
+    // ============================================================
+    // 3. CONVERTE BUNNY EMBED → MP4 DIRETO
+    // ============================================================
+    if (urlFinalParaAirPlay.contains(
+      'mediadelivery.net/embed/',
+    )) {
       try {
-        final uriTarget = Uri.parse(urlFinalParaAirPlay);
+        final uriTarget = Uri.parse(
+          urlFinalParaAirPlay,
+        );
+
         final segments = uriTarget.pathSegments;
+
         if (segments.length >= 3) {
           final videoId = segments[2];
-          urlFinalParaAirPlay = 'https://vz-84a4a5f4-d42.b-cdn.net/$videoId/play_360p.mp4';
-          debugPrint('[AIRPLAY] BUNNY CONVERTIDO DIRETAMENTE: $urlFinalParaAirPlay');
+
+          urlFinalParaAirPlay =
+          'https://vz-84a4a5f4-d42.b-cdn.net/'
+              '$videoId/play_360p.mp4';
+
+          debugPrint(
+            '[AIRPLAY] BUNNY CONVERTIDO DIRETAMENTE: '
+                '$urlFinalParaAirPlay',
+          );
         }
       } catch (e) {
-        debugPrint('[AIRPLAY] ERRO AO CONVERTER URL DO AIRPLAY: $e');
+        debugPrint(
+          '[AIRPLAY] ERRO AO CONVERTER URL: $e',
+        );
       }
     }
 
-    debugPrint('[AIRPLAY] ENVIANDO URL DIRETA PARA O PLAYER DO WEBVIEW: $urlFinalParaAirPlay');
+    // ============================================================
+    // 4. LOG DA URL FINAL
+    // ============================================================
+    debugPrint(
+      '[AIRPLAY] URL FINAL PARA AIRPLAY: '
+          '$urlFinalParaAirPlay',
+    );
 
-    // 3. INJETA A URL LIMPA NO PLAYER DO WEBVIEW E FORÇA O AIRPLAY NATIVO DO SAFARI A ASSUMIR
-    controller.runJavaScript('''
-    (function() {
-      var video = document.querySelector('video');
-      if (!video) {
-        // Se não houver tag video direta, cria uma temporária no DOM para o iOS puxar
-        video = document.createElement('video');
-        video.style.display = 'none';
-        document.body.appendChild(video);
-      }
-      
-      video.src = '$urlFinalParaAirPlay';
-      video.setAttribute('playsinline', 'true');
-      video.setAttribute('webkit-playsinline', 'true');
-      video.setAttribute('x-webkit-airplay', 'allow');
-      video.allowsExternalPlayback = true;
-      
-      video.load();
-      video.play().then(function() {
-        // Tenta abrir o menu de roteamento externo do Safari via JS se suportado
-        if (typeof video.webkitShowPlaybackTargetPicker === 'function') {
-          video.webkitShowPlaybackTargetPicker();
+    // ============================================================
+    // 5. ENVIA O MP4 PARA UM <VIDEO> EXCLUSIVO DO AIRPLAY
+    //
+    // IMPORTANTE:
+    // - NÃO usa o vídeo do site
+    // - NÃO usa display:none
+    // - NÃO abre outro picker
+    //
+    // O AirPlayRoutePickerView já é responsável pela seleção
+    // da TV.
+    // ============================================================
+    try {
+      await controller.runJavaScript('''
+      (function() {
+
+        console.log('[AIRPLAY] Preparando player dedicado...');
+
+        // Remove player AirPlay anterior, se existir.
+        var antigo =
+            document.getElementById('conserlarAirPlayVideo');
+
+        if (antigo) {
+          try {
+            antigo.pause();
+          } catch (e) {}
+
+          antigo.remove();
         }
-      }).catch(function(err) {
-        console.log('[AIRPLAY JS] Erro ao dar play para cast:', err);
-      });
-    })();
-  ''');
+
+        // ======================================================
+        // Cria um VIDEO exclusivo para o AirPlay
+        // ======================================================
+        var video = document.createElement('video');
+
+        video.id = 'conserlarAirPlayVideo';
+
+        // Não usamos display:none.
+        // Mantemos o elemento no DOM, mas praticamente invisível.
+        video.style.position = 'fixed';
+        video.style.left = '0px';
+        video.style.top = '0px';
+        video.style.width = '1px';
+        video.style.height = '1px';
+        video.style.opacity = '0.01';
+        video.style.pointerEvents = 'none';
+        video.style.zIndex = '-9999';
+
+        // ======================================================
+        // Configurações necessárias para WebKit / AirPlay
+        // ======================================================
+        video.setAttribute(
+          'playsinline',
+          'true'
+        );
+
+        video.setAttribute(
+          'webkit-playsinline',
+          'true'
+        );
+
+        video.setAttribute(
+          'x-webkit-airplay',
+          'allow'
+        );
+
+        video.playsInline = true;
+
+        // Permite reprodução externa.
+        video.allowsExternalPlayback = true;
+
+        video.controls = false;
+        video.autoplay = false;
+        video.muted = false;
+
+        // ======================================================
+        // Eventos para diagnóstico
+        // ======================================================
+        video.addEventListener(
+          'loadstart',
+          function() {
+            console.log(
+              '[AIRPLAY] loadstart'
+            );
+          }
+        );
+
+        video.addEventListener(
+          'loadedmetadata',
+          function() {
+            console.log(
+              '[AIRPLAY] metadata carregada'
+            );
+
+            console.log(
+              '[AIRPLAY] duração: ' +
+              video.duration
+            );
+          }
+        );
+
+        video.addEventListener(
+          'canplay',
+          function() {
+            console.log(
+              '[AIRPLAY] vídeo pronto para reprodução'
+            );
+          }
+        );
+
+        video.addEventListener(
+          'playing',
+          function() {
+            console.log(
+              '[AIRPLAY] vídeo começou a tocar'
+            );
+          }
+        );
+
+        video.addEventListener(
+          'pause',
+          function() {
+            console.log(
+              '[AIRPLAY] vídeo pausado'
+            );
+          }
+        );
+
+        video.addEventListener(
+          'error',
+          function() {
+
+            var codigo =
+                video.error
+                    ? video.error.code
+                    : 'desconhecido';
+
+            var mensagem =
+                video.error
+                    ? video.error.message
+                    : '';
+
+            console.log(
+              '[AIRPLAY] ERRO VIDEO: ' +
+              codigo +
+              ' ' +
+              mensagem
+            );
+          }
+        );
+
+        // ======================================================
+        // URL DIRETA DO MP4
+        // ======================================================
+        video.src = '$urlFinalParaAirPlay';
+
+        // Adiciona ao DOM.
+        document.body.appendChild(video);
+
+        console.log(
+          '[AIRPLAY] MP4 inserido no player dedicado'
+        );
+
+        console.log(
+          '[AIRPLAY] URL: ' +
+          video.src
+        );
+
+        // ======================================================
+        // Carrega o vídeo
+        // ======================================================
+        video.load();
+
+        // ======================================================
+        // Aguarda o vídeo estar pronto e inicia reprodução.
+        //
+        // NÃO chamamos:
+        // webkitShowPlaybackTargetPicker()
+        //
+        // pois o AirPlayRoutePickerView do Flutter já seleciona
+        // a rota AirPlay.
+        // ======================================================
+        var iniciarVideo = function() {
+
+          console.log(
+            '[AIRPLAY] Tentando iniciar reprodução...'
+          );
+
+          video.play()
+            .then(function() {
+
+              console.log(
+                '[AIRPLAY] PLAY iniciado com sucesso'
+              );
+
+            })
+            .catch(function(err) {
+
+              console.log(
+                '[AIRPLAY] ERRO NO PLAY: ' +
+                err
+              );
+
+            });
+        };
+
+        if (
+          video.readyState >= 2
+        ) {
+          iniciarVideo();
+
+        } else {
+
+          video.addEventListener(
+            'canplay',
+            iniciarVideo,
+            { once: true }
+          );
+        }
+
+      })();
+    ''');
+
+      debugPrint(
+        '[AIRPLAY] Player dedicado criado com sucesso.',
+      );
+    } catch (e) {
+      debugPrint(
+        '[AIRPLAY] ERRO AO INJETAR PLAYER: $e',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Erro ao preparar AirPlay: $e',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
-  Future<void> _processarETransmitirImagemParaAirPlay(String urlOriginal) async {
+  Future<void> _processarETransmitirImagemParaAirPlay(
+      String urlOriginal,
+      ) async {
     try {
-      final uri = Uri.parse(urlOriginal);
+      debugPrint(
+        '[AIRPLAY] PROCESSANDO IMAGEM:',
+      );
+
+      debugPrint(
+        '[AIRPLAY] URL ORIGINAL: $urlOriginal',
+      );
+
+      // ==========================================================
+      // 1. EXTRAI O NOME DO ARQUIVO
+      // ==========================================================
+      final uri = Uri.parse(
+        urlOriginal,
+      );
+
       final segmentos = uri.pathSegments;
-      final nomeArquivoBruto = segmentos.isNotEmpty ? segmentos.last : '';
-      final nomeDecodificado = Uri.decodeComponent(nomeArquivoBruto);
 
-      final regExp = RegExp(r'(_page-.*|\.[^./\?]+)$', caseSensitive: false);
-      final nomeLimpo = nomeDecodificado.replaceAll(regExp, '').trim();
+      final nomeArquivoBruto =
+      segmentos.isNotEmpty
+          ? segmentos.last
+          : '';
 
-      final endpoint = Uri.parse('https://script.google.com/macros/s/AKfycbxWOaNg2iYseVQOk2ceIqVzeBKcbBOaW-oMtFe22YVPrpmKww2NY6qroSpgQe6jNAhq/exec?action=get_cast_link&nome=$nomeLimpo');
+      final nomeDecodificado =
+      Uri.decodeComponent(
+        nomeArquivoBruto,
+      );
 
-      final response = await http.get(endpoint);
+      // ==========================================================
+      // 2. LIMPA O NOME
+      // Remove:
+      // _page-...
+      // extensão
+      // ==========================================================
+      final regExp = RegExp(
+        r'(_page-.*|\.[^./\?]+)$',
+        caseSensitive: false,
+      );
 
+      final nomeLimpo =
+      nomeDecodificado
+          .replaceAll(
+        regExp,
+        '',
+      )
+          .trim();
+
+      debugPrint(
+        '[AIRPLAY] NOME LIMPO: $nomeLimpo',
+      );
+
+      // ==========================================================
+      // 3. CONSULTA A PLANILHA
+      // ==========================================================
+      final endpoint = Uri.parse(
+          'https://script.google.com/macros/s/'
+              'AKfycbxWOaNg2iYseVQOk2ceIqVzeBKcbBOaW-oMtFe22YVPrpmKww2NY6qroSpgQe6jNAhq/'
+              'exec'
+      ).replace(
+        queryParameters: {
+          'action': 'get_cast_link',
+          'nome': nomeLimpo,
+        },
+      );
+
+      debugPrint(
+        '[AIRPLAY] CONSULTANDO LINK CAST...',
+      );
+
+      final response = await http.get(
+        endpoint,
+      );
+
+      debugPrint(
+        '[AIRPLAY] STATUS PLANILHA: '
+            '${response.statusCode}',
+      );
+
+      // ==========================================================
+      // 4. RESPOSTA OK
+      // ==========================================================
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final String? linkColunaH = data['link_cast'];
 
-        if (linkColunaH != null && linkColunaH.isNotEmpty) {
+        final data =
+        jsonDecode(
+          response.body,
+        );
+
+        final String? linkColunaH =
+        data['link_cast'];
+
+        debugPrint(
+          '[AIRPLAY] LINK COLUNA H: '
+              '${linkColunaH ?? 'NULL'}',
+        );
+
+        if (linkColunaH != null &&
+            linkColunaH.isNotEmpty) {
+
+          // ======================================================
+          // 5. ATUALIZA A MÍDIA ATUAL
+          // ======================================================
           setState(() {
-            _currentMediaUrl = linkColunaH;
-            _currentMediaTitle = nomeLimpo;
-            _currentMediaType = 'video';
+            _currentMediaUrl =
+                linkColunaH;
+
+            _currentMediaTitle =
+                nomeLimpo;
+
+            _currentMediaType =
+            'video';
           });
 
-          // Repete o fluxo já com o link corrigido da apostila
+          debugPrint(
+            '[AIRPLAY] LINK DA COLUNA H OBTIDO.',
+          );
+
+          // ======================================================
+          // 6. VOLTA PARA O FLUXO NORMAL
+          //
+          // Agora _enviarMidiaParaAirPlay()
+          // receberá o link direto e fará:
+          //
+          // URL → Bunny MP4 → VIDEO → AIRPLAY
+          // ======================================================
           await _enviarMidiaParaAirPlay();
+
+        } else {
+
+          debugPrint(
+            '[AIRPLAY] LINK_CAST NÃO ENCONTRADO.',
+          );
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Não foi encontrado o vídeo da apostila.',
+                ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+
+      } else {
+
+        debugPrint(
+          '[AIRPLAY] ERRO HTTP: '
+              '${response.statusCode}',
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Erro ao buscar vídeo: '
+                    '${response.statusCode}',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       }
+
     } catch (e) {
-      debugPrint('[AIRPLAY] ERRO AO PROCESSAR IMAGEM: $e');
+
+      debugPrint(
+        '[AIRPLAY] ERRO AO PROCESSAR IMAGEM: $e',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Erro ao preparar vídeo para AirPlay.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 

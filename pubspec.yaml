@@ -43,6 +43,7 @@ dependencies:
   dlna_dart: ^0.1.1
   flutter_to_airplay: ^2.1.0
   bonsoir: ^7.1.5
+  video_player: ^2.8.2
   #shelf: ^1.4.1
   #shelf_router: ^1.1.4
   #http: ^1.2.0 # Para fazer a requisição para o Bunny CDN
@@ -79,6 +80,7 @@ flutter:
     - assets/wifi.json
     - assets/book.json
     - assets/bluetooth.json
+    - assets/splash_video.mp4
 
   # To add assets to your application, add an assets section, like this:
   # assets:
