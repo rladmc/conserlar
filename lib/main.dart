@@ -1199,6 +1199,88 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       '[CONSERLAR IOS] Dispositivo iOS:',
       ehIOS
     );
+  
+   /*
+     * ============================================================
+     * PLAYER AIRPLAYER
+     * ============================================================
+     *
+     */  
+  function configurarVideosInline() {
+  // IFRAMES
+  var iframes = document.querySelectorAll('iframe');
+
+  for (var i = 0; i < iframes.length; i++) {
+    var iframe = iframes[i];
+
+    iframe.setAttribute('playsinline', 'true');
+    iframe.setAttribute('webkit-playsinline', 'true');
+
+    var sandbox = iframe.getAttribute('sandbox') || '';
+
+    if (sandbox.indexOf('allow-scripts') === -1) {
+      iframe.setAttribute(
+        'sandbox',
+        sandbox +
+        ' allow-scripts allow-same-origin allow-presentation allow-forms allow-popups'
+      );
+    }
+
+    try {
+      var innerDoc =
+          iframe.contentDocument ||
+          iframe.contentWindow.document;
+
+      if (innerDoc) {
+        var innerVideos = innerDoc.querySelectorAll('video');
+
+        for (var v = 0; v < innerVideos.length; v++) {
+          innerVideos[v].setAttribute('playsinline', 'true');
+          innerVideos[v].setAttribute('webkit-playsinline', 'true');
+        }
+      }
+    } catch (e) {
+      console.log('[INLINE] Cross-origin iframe.');
+    }
+  }
+
+  // VÍDEOS
+  var videos = document.querySelectorAll('video');
+
+  for (var j = 0; j < videos.length; j++) {
+    var video = videos[j];
+
+    if (video.id === 'conserlarAirPlayVideo') {
+      continue;
+    }
+
+    video.setAttribute('playsinline', 'true');
+    video.setAttribute('webkit-playsinline', 'true');
+    video.setAttribute('x-webkit-airplay', 'allow');
+    video.controls = false;
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.objectFit = 'contain';
+  }
+
+  // FULLSCREEN
+  if (!document.getElementById('conserlarAirPlayFullscreenStyle')) {
+    var styleFs = document.createElement('style');
+    styleFs.id = 'conserlarAirPlayFullscreenStyle';
+    styleFs.innerHTML =
+      'video::-webkit-media-controls-fullscreen-button{' +
+      'display:none!important;}';
+    document.head.appendChild(styleFs);
+  }
+}
+
+configurarVideosInline();
+
+setTimeout(configurarVideosInline, 500);
+setTimeout(configurarVideosInline, 1500);
+setTimeout(configurarVideosInline, 3000);
+
+setInterval(configurarVideosInline, 5000);
 
 
     /*
