@@ -438,9 +438,23 @@ class OtaActivityTESTINV : AppCompatActivity() {
         isListening = false
 
         try {
-            socket?.close()
-            BluetoothSocketHolder.setSocket(null)
-        } catch (_: Exception) {
+            // 1. Envia o "w" ANTES de fechar o socket
+            socket?.let { s ->
+                if (s.isConnected) {
+                    val out = s.outputStream
+                    out.write("w".toByteArray())
+                    out.flush()
+                    SystemClock.sleep(100) // Pausa rápida para o buffer enviar
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao enviar 'w' ao voltar: ${e.message}")
+        } finally {
+            // 2. Agora fecha o socket de vez
+            try {
+                socket?.close()
+                BluetoothSocketHolder.setSocket(null)
+            } catch (_: Exception) {}
         }
 
         val intent = Intent(this, ScanInversoraActivity::class.java)
@@ -453,5 +467,21 @@ class OtaActivityTESTINV : AppCompatActivity() {
         super.onDestroy()
         isListening = false
         liberarRede()
+
+        try {
+            // 1. Envia o "w" explicitamente para a placa antes de fechar
+            val out = socket?.outputStream
+            out?.write("w".toByteArray())
+            out?.flush()
+
+            // Pequena pausa para garantir que o envio saiu pelo buffer do Bluetooth
+            Thread.sleep(50)
+
+            // 2. Agora sim, fecha o socket
+            socket?.close()
+            BluetoothSocketHolder.setSocket(null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao enviar 'w' ou fechar socket", e)
+        }
     }
 }

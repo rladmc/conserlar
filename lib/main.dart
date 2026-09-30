@@ -11,7 +11,6 @@ import 'package:bonsoir/bonsoir.dart';
 import 'package:http/http.dart' as http;
 import 'package:no_screenshot/no_screenshot.dart';
 import 'package:flutter_to_airplay/flutter_to_airplay.dart';
-//import 'package:flutter_ios_airplay/flutter_ios_airplay.dart';
 import 'package:dlna_dart/dlna.dart';
 import 'dart:async';
 import 'package:video_player/video_player.dart';
@@ -966,7 +965,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 
     if (WebViewPlatform.instance is WebKitWebViewPlatform) {
       params = WebKitWebViewControllerCreationParams(
-        allowsInlineMediaPlayback: false, // Impede o player nativo de tela cheia no iOS
+        allowsInlineMediaPlayback: true, // Impede o player nativo de tela cheia no iOS
         mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
       );
     } else {
@@ -3155,30 +3154,6 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
             const Divider(
               color: Colors.grey,
             ),
-
-            // SE FOR IOS: Exibe o botão AirPlay limpo
-            if (Platform.isIOS) ...[
-              ListTile(
-                onTap: () async {
-                  await _enviarMidiaParaAirPlay();
-                },
-                leading: const Icon(Icons.airplay, color: Colors.blueAccent),
-                title: const Text(
-                  'AirPlay',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                trailing: SizedBox(
-                  width: 50,
-                  height: 40,
-                  child: AirPlayRoutePickerView(
-                    tintColor: Colors.blueAccent,
-                    activeTintColor: Colors.greenAccent,
-                    backgroundColor: Colors.transparent,
-                  ),
-                ),
-              ),
-             // const Divider(color: Colors.grey),
-            ],
 
             // Lista padrão de dispositivos DLNA / Bonsoir (Chromecast/Outros)
             Expanded(
