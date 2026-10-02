@@ -4,8 +4,6 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
-      groups:
-        - appstore_credentials # Nome opcional para o grupo se usares variáveis, mas a integração via UI já trata disso
       vars:
         BUNDLE_ID: "com.rladmc.appconserlar"
       ios_signing:
@@ -17,11 +15,10 @@ workflows:
           flutter pub get
       - name: Compilar IPA para App Store
         script: |
-          flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+          flutter build ipa --release
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-        expire_beta_builds_before_processing: false
