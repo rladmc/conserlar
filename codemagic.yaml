@@ -5,7 +5,7 @@ workflows:
     instance_type: mac_mini_m2
     environment:
       vars:
-        BUNDLE_ID: "com.rladmc.appconserlar"
+        BUNDLE_ID: "com.example.conserlar"
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.example.conserlar
