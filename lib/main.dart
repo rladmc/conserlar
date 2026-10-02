@@ -14,6 +14,88 @@ import 'package:flutter_to_airplay/flutter_to_airplay.dart';
 import 'package:dlna_dart/dlna.dart';
 import 'dart:async';
 import 'package:video_player/video_player.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+
+// Função auxiliar para comparar versões no formato "X.Y" ou "X.Y.Z"
+bool _isNewVersionAvailable(String remoteVersion, String currentVersion) {
+  List<int> remoteParts = remoteVersion.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+  List<int> currentParts = currentVersion.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+
+  while (remoteParts.length < currentParts.length) remoteParts.add(0);
+  while (currentParts.length < remoteParts.length) currentParts.add(0);
+
+  for (int i = 0; i < remoteParts.length; i++) {
+    if (remoteParts[i] > currentParts[i]) return true;
+    if (remoteParts[i] < currentParts[i]) return false;
+  }
+  return false;
+}
+
+Future<void> verificarAtualizacaoApp(BuildContext context) async {
+  try {
+    const String jsonUrl = "https://raw.githubusercontent.com/rladmc/AppConserlar/main/ota/version.json";
+
+    // 1. Busca o JSON no GitHub
+    final response = await http.get(Uri.parse(jsonUrl));
+    if (response.statusCode != 200) return;
+
+    final json = jsonDecode(response.body);
+
+    String remoteVersion;
+    String changeLog;
+    String storeUrl;
+
+    // 2. Define os dados de acordo com o sistema operacional
+    if (Platform.isIOS) {
+      remoteVersion = json['versionIOS'] ?? "1.0";
+      changeLog = json['changelogIOS'] ?? "Há uma nova atualização disponível para iOS.";
+      storeUrl = json['appStoreUrl'] ?? "";
+    } else {
+      // Para o Android, ele lê a chave "version" do seu JSON novo,
+      // caindo para a "versionName" ou "1.0" se não encontrar
+      remoteVersion = json['versionName'] ?? json['versionName'] ?? "1.0";
+      changeLog = json['changelog'] ?? json['changeLog'] ?? "Há uma nova atualização disponível.";
+      storeUrl = json['url'] ?? json['url'] ?? "";
+    }
+
+    // 3. Pega a versão atual instalada no aparelho
+    PackageInfo packageInfo = await PackageInfo.fromPlatform();
+    String currentVersion = packageInfo.version; // Pega o número da versão (ex: 5.6)
+
+    // 4. Compara e exibe o alerta se houver versão mais nova
+    if (_isNewVersionAvailable(remoteVersion, currentVersion)) {
+      if (!context.mounted) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text("🚀 Nova Versão Disponível!"),
+            content: Text(changeLog),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text("Depois"),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final Uri uri = Uri.parse(storeUrl);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+                child: const Text("Baixar"),
+              ),
+            ],
+          );
+        },
+      );
+    }
+  } catch (e) {
+    debugPrint("Erro ao verificar atualização: $e");
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -132,8 +214,22 @@ class _SplashScreenVideoState extends State<SplashScreenVideo> {
 // ==========================================
 // TELA DO MENU PRINCIPAL
 // ==========================================
-class MainMenuView extends StatelessWidget {
+class MainMenuView extends StatefulWidget {
   const MainMenuView({super.key});
+
+  @override
+  State<MainMenuView> createState() => _MainMenuViewState();
+}
+
+class _MainMenuViewState extends State<MainMenuView> {
+  @override
+  void initState() {
+    super.initState();
+    // Dispara a verificação de atualização assim que o menu principal aparece na tela
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      verificarAtualizacaoApp(context);
+    });
+  }
 
   Future<void> _launchUrl(String urlString) async {
     final Uri url = Uri.parse(urlString);
@@ -213,7 +309,6 @@ class MainMenuView extends StatelessWidget {
                             title: "CONSER TEST SCAN",
                             subtitle: "BLUETOOTH",
                             lottieRes: 'assets/bluetooth.json',
-                            // Cores convertidas do seu XML: Preto -> Roxo (#800080) -> Preto
                             gradientColors: const [
                               Color(0xFF000000),
                               Color(0xFF800080),
