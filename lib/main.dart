@@ -974,7 +974,7 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
 
     controller = WebViewController.fromPlatformCreationParams(params)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setUserAgent('iphoneconserlar2026')
+      ..setUserAgent(Platform.isIOS ? 'iphoneconserlar2026' : 'app2026')
       ..addJavaScriptChannel(
         'AndroidCastBridge',
         onMessageReceived: (message) {

@@ -49,6 +49,9 @@ dependencies:
   #http: ^1.2.0 # Para fazer a requisição para o Bunny CDN
   #ffmpeg_kit_flutter_new: ^4.6.2
   no_screenshot: ^2.0.0 # ou a versão mais recente compatível
+  http: ^1.2.0
+  package_info_plus: ^8.0.0
+url_launcher: ^6.2.5
 
 dev_dependencies:
   flutter_test:
