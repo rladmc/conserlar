@@ -382,7 +382,7 @@ class _MainMenuViewState extends State<MainMenuView> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 40, top: 5),
                   child: Text(
-                    Platform.isAndroid ? "Versão 6.0.0" : "Versão 1.0.0",
+                    Platform.isAndroid ? "Versão 5.6.0" : "Versão 1.0.0",
                     style: const TextStyle(color: Color(0xFF7F8C8D), fontSize: 12),
                   ),
                 ),
