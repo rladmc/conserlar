@@ -3947,6 +3947,12 @@ setInterval(configurarVideosInline, 5000);
         }
       }
 
+      // 2. NOVO: Se o link terminar ou contiver "playlist.m3u8", trocamos para o MP4 direto
+      if (urlFinalParaCast.contains('playlist.m3u8')) {
+        urlFinalParaCast = urlFinalParaCast.replaceAll('playlist.m3u8', 'play_360p.mp4');
+        debugPrint('M3U8 CONVERTIDO PARA MP4 DIRETO: $urlFinalParaCast');
+      }
+
       debugPrint('URL DIRETA FINAL PARA O CAST: $urlFinalParaCast');
 
       // Validação flexível que aceita o CDN direto do Bunny ou a regra padrão
