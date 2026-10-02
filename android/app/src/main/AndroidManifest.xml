@@ -44,6 +44,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+                <data android:scheme="motorapp" android:host="app" />
             </intent-filter>
         </activity>
 
@@ -112,11 +113,6 @@
         <activity
             android:name=".ConserTestActivity"
             android:exported="false"
-            android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar" />
-
-        <activity
-            android:name=".MenuConsertestWifi"
-            android:exported="true"
             android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar" />
 
         <activity

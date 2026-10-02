@@ -96,5 +96,17 @@
         <string>prefs</string>
     </array>
 
+    <key>CFBundleURLTypes</key>
+        <array>
+            <dict>
+                <key>CFBundleURLName</key>
+                <string>com.rladmc.appconserlar</string>
+                <key>CFBundleURLSchemes</key>
+                <array>
+                    <string>motorapp</string>
+                </array>
+            </dict>
+        </array>
+
 </dict>
 </plist>
