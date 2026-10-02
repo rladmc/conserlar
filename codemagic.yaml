@@ -8,7 +8,7 @@ workflows:
         BUNDLE_ID: "com.rladmc.appconserlar"
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: com.rladmc.appconserlar
+        bundle_identifier: com.example.conserlar
     scripts:
       - name: Instalar dependências do Flutter
         script: |
