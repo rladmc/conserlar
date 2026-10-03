@@ -13,7 +13,7 @@ workflows:
           flutter pub get
       - name: Compilar IPA para App Store
         script: |
-          flutter build ipa --release
+          flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
