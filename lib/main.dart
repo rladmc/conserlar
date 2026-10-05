@@ -707,7 +707,7 @@ class _ConserTestWebViewState extends State<ConserTestWebView> {
     super.initState();
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setUserAgent("iphoneconserlar2026")
+      ..setUserAgent(Platform.isIOS ? 'iphoneconserlar2026' : 'app2026')
       ..loadRequest(Uri.parse('https://consertest.conserlar.com'));
   }
 
@@ -1126,6 +1126,15 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       ..setNavigationDelegate(
         NavigationDelegate(
           onNavigationRequest: (request) {
+
+            final url = request.url;
+
+            // Se o link for do WhatsApp, impede o WebView de carregar internamente e abre no app/navegador externo
+            if (url.contains('chat.whatsapp.com') || url.contains('wa.me') || url.contains('api.whatsapp.com')) {
+              _abrirWhatsAppExternoNativo(url);
+              return NavigationDecision.prevent;
+            }
+
             if (request.url.contains('app://full_clicked') ||
                 request.url.contains('app://exit_full_clicked')) {
               _toggleFullInterno();
@@ -1165,6 +1174,17 @@ class _TelaDeEstudosSeguraState extends State<TelaDeEstudosSegura>
       ..loadRequest(
         Uri.parse('https://aluno.conserlar.com'),
       );
+  }
+
+  Future<void> _abrirWhatsAppExternoNativo(String urlString) async {
+    final Uri url = Uri.parse(urlString);
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      debugPrint('Erro ao abrir WhatsApp externo: $e');
+    }
   }
 
   Future<void> _protegerTela() async {
