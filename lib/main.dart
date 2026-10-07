@@ -587,35 +587,27 @@ class ConserTestScanView extends StatelessWidget {
                             }
                           },
                         ),
-                        _buildScanButton(
-                          title: "PRIMEIRO ACESSO",
-                          subtitle: isAndroid ? "CONSER TEST SCAN - TRAVA" : null,
-                          lottieRes: null,
-                          gradientColors: const [
-                            Color(0xFF000000),
-                            Color(0xFF238C00),
-                            Color(0xFF000000),
-                          ],
-                          textColor: Colors.white,
-                          showBothIcons: false,
-                          onTap: () async {
-                            if (isAndroid) {
+                        if (isAndroid)
+                          _buildScanButton(
+                            title: "PRIMEIRO ACESSO",
+                            subtitle: "CONSER TEST SCAN - TRAVA",
+                            lottieRes: null,
+                            gradientColors: const [
+                              Color(0xFF000000),
+                              Color(0xFF238C00),
+                              Color(0xFF000000),
+                            ],
+                            textColor: Colors.white,
+                            showBothIcons: false,
+                            onTap: () async {
                               try {
                                 const platform = MethodChannel('com.rladmc.pdfconserlar/android');
                                 await platform.invokeMethod('abrirPrimeiroTrava');
                               } catch (e) {
                                 debugPrint("Erro ao chamar activity nativa: $e");
                               }
-                            } else {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const PrimeiroAcessoWebViewView(),
-                                ),
-                              );
-                            }
-                          },
-                        ),
+                            },
+                          ),
                       ],
                     ),
                   ),
@@ -769,10 +761,41 @@ class _ConserTestWebViewState extends State<ConserTestWebView> {
 
   @override
   Widget build(BuildContext context) {
+    // Verifica se a plataforma é Android
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        child: WebViewWidget(controller: controller),
+        child: Stack(
+          children: [
+            // 1. O CONTEÚDO DO WEBVIEW
+            WebViewWidget(controller: controller),
+
+            // 2. BOTÃO VISÍVEL DE VOLTAR (Exibido exclusivamente no iOS)
+            if (!isAndroid)
+              Positioned(
+                top: 10,
+                left: 10,
+                child: CircleAvatar(
+                  backgroundColor: Colors.black.withOpacity(0.6),
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.arrow_back_ios_new,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    tooltip: 'Voltar',
+                    onPressed: () {
+                      if (Navigator.of(context).canPop()) {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -4349,6 +4372,7 @@ setInterval(configurarVideosInline, 5000);
   // ============================================================
 // BUILD (TRECHO CORRIGIDO DO STACK)
 // ============================================================
+  final isAndroid = defaultTargetPlatform == TargetPlatform.android;
   @override
   Widget build(BuildContext context) {
     // Verifica se existe uma sessão ativa (seja do Chromecast ou a nossa sessão DLNA)
@@ -4363,6 +4387,7 @@ setInterval(configurarVideosInline, 5000);
       body: SafeArea(
         child: Stack(
           children: [
+            // 1. CONTEÚDO PRINCIPAL (WEBVIEW OU TELA PROTEGIDA)
             if (_conteudoVisivel)
               WebViewWidget(
                 controller: controller,
@@ -4382,7 +4407,7 @@ setInterval(configurarVideosInline, 5000);
                 ),
               ),
 
-            // OVERLAY FLUTUANTE DE CONTROLE (CHROMECAST & DLNA)
+            // 2. OVERLAY FLUTUANTE DE CONTROLE (CHROMECAST & DLNA)
             if (estaTransmitindo)
               CastControllerOverlay(
                 mediaTitle: _currentMediaTitle.isNotEmpty ? _currentMediaTitle : 'Aula Conserlar',
@@ -4410,6 +4435,29 @@ setInterval(configurarVideosInline, 5000);
                 onSeekForward: () async {
                   await mudarPosicao(sessaoAtiva, 10); // Avança 10 segundos
                 },
+              ),
+
+            // 3. BOTÃO VISÍVEL DE VOLTAR (Exibido exclusivamente no iOS)
+            if (!isAndroid)
+              Positioned(
+                top: 10,
+                left: 10,
+                child: CircleAvatar(
+                  backgroundColor: Colors.black.withOpacity(0.6),
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.arrow_back_ios_new,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    tooltip: 'Voltar',
+                    onPressed: () {
+                      if (Navigator.of(context).canPop()) {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                  ),
+                ),
               ),
           ],
         ),
