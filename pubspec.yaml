@@ -51,6 +51,7 @@ dependencies:
   no_screenshot: ^2.0.0 # ou a versão mais recente compatível
   http: ^1.2.0
   package_info_plus: ^8.0.0
+  device_preview: ^3.0.0
 url_launcher: ^6.2.5
 
 dev_dependencies:

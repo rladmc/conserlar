@@ -52,6 +52,13 @@ class MainActivity: FlutterActivity() {
                     startActivity(intent)
                     result.success(true)
                 }
+                "abrirPrimeiroTrava" -> {
+                    val intent = Intent(this@MainActivity, PrimeiroTrava::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(intent)
+                    result.success(true)
+                }
                 else -> {
                     result.notImplemented()
                 }

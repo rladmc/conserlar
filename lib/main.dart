@@ -15,6 +15,7 @@ import 'package:dlna_dart/dlna.dart';
 import 'dart:async';
 import 'package:video_player/video_player.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:flutter/foundation.dart';
 
 // Função auxiliar para comparar versões no formato "X.Y" ou "X.Y.Z"
 bool _isNewVersionAvailable(String remoteVersion, String currentVersion) {
@@ -498,11 +499,15 @@ class ConserTestScanView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Identifica se a plataforma atual é Android
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+
     return Scaffold(
       backgroundColor: const Color(0xFF37474F),
       body: SafeArea(
         child: Stack(
           children: [
+            // 1. FUNDO ANIMADO (Lottie)
             Positioned.fill(
               child: Opacity(
                 opacity: 0.7,
@@ -513,6 +518,8 @@ class ConserTestScanView extends StatelessWidget {
                 ),
               ),
             ),
+
+            // 2. CONTEÚDO PRINCIPAL (Logo + Botões de Acesso)
             Column(
               children: [
                 Padding(
@@ -553,8 +560,7 @@ class ConserTestScanView extends StatelessWidget {
                         ),
                         _buildScanButton(
                           title: "PRIMEIRO ACESSO",
-                          // Exibe "EEPROM" se for Android, senão fica null no iOS
-                          subtitle: Platform.isAndroid ? "CONSER TEST SCAN - EEPROM" : null,
+                          subtitle: isAndroid ? "CONSER TEST SCAN - EEPROM" : null,
                           lottieRes: null,
                           gradientColors: const [
                             Color(0xFF000000),
@@ -564,16 +570,43 @@ class ConserTestScanView extends StatelessWidget {
                           textColor: Colors.white,
                           showBothIcons: false,
                           onTap: () async {
-                            if (Platform.isAndroid) {
-                              // Abre a Activity nativa MenuConsertestWifi.kt no Android
+                            if (isAndroid) {
                               try {
                                 const platform = MethodChannel('com.rladmc.pdfconserlar/android');
                                 await platform.invokeMethod('abrirPrimeiroEeprom');
                               } catch (e) {
-                                print("Erro ao chamar activity nativa: $e");
+                                debugPrint("Erro ao chamar activity nativa: $e");
                               }
                             } else {
-                              // Comportamento original para iOS
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const PrimeiroAcessoWebViewView(),
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                        _buildScanButton(
+                          title: "PRIMEIRO ACESSO",
+                          subtitle: isAndroid ? "CONSER TEST SCAN - TRAVA" : null,
+                          lottieRes: null,
+                          gradientColors: const [
+                            Color(0xFF000000),
+                            Color(0xFF238C00),
+                            Color(0xFF000000),
+                          ],
+                          textColor: Colors.white,
+                          showBothIcons: false,
+                          onTap: () async {
+                            if (isAndroid) {
+                              try {
+                                const platform = MethodChannel('com.rladmc.pdfconserlar/android');
+                                await platform.invokeMethod('abrirPrimeiroTrava');
+                              } catch (e) {
+                                debugPrint("Erro ao chamar activity nativa: $e");
+                              }
+                            } else {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
@@ -589,6 +622,29 @@ class ConserTestScanView extends StatelessWidget {
                 ),
               ],
             ),
+
+            // 3. BOTÃO VISÍVEL DE VOLTAR (Exibido exclusivamente no iOS)
+            if (!isAndroid)
+              Positioned(
+                top: 10,
+                left: 10,
+                child: CircleAvatar(
+                  backgroundColor: Colors.black.withOpacity(0.5),
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.arrow_back_ios_new,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    tooltip: 'Voltar',
+                    onPressed: () {
+                      if (Navigator.of(context).canPop()) {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                  ),
+                ),
+              ),
           ],
         ),
       ),
