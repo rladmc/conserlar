@@ -837,18 +837,35 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
     super.dispose();
   }
 
-  bool _isSaving = false; // Flag para ignorar erros pós-salvamento
+  bool _isSaving = false;
 
   void _inicializarWebView() {
+    _isSaving = false;
+
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
+          onNavigationRequest: (NavigationRequest request) {
+            // Quando o formulário for enviado para /salvar, já ativa a flag de salvamento
+            if (request.url.contains("/salvar")) {
+              setState(() {
+                _isSaving = true;
+                _isLoadingWebView = true;
+              });
+            }
+            return NavigationDecision.navigate;
+          },
           onPageStarted: (String url) {
             if (!mounted) return;
+            if (url.contains("/salvar")) {
+              _isSaving = true;
+            }
             setState(() {
               _isLoadingWebView = true;
-              _webViewError = false;
+              if (!_isSaving) {
+                _webViewError = false;
+              }
             });
           },
           onPageFinished: (String url) {
@@ -856,25 +873,16 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
 
             setState(() {
               _isLoadingWebView = false;
-              _webViewError = false;
+              if (!_isSaving) {
+                _webViewError = false;
+              }
             });
 
-            // Se a URL contém /salvar, marca que salvou com sucesso
-            if (url.contains("/salvar")) {
-              _isSaving = true; // Ignora erros de rede a partir daqui
-
-              Future.delayed(const Duration(seconds: 3), () {
+            // Se concluiu a tela do /salvar, aguarda 2.5s e fecha o WebView voltando para o app
+            if (url.contains("/salvar") || _isSaving) {
+              Future.delayed(const Duration(milliseconds: 2500), () {
                 if (mounted) {
-                  // Opção A: Apenas fecha a tela e volta pro app
                   Navigator.pop(context);
-
-                  // Opção B: Se quiser abrir direto a plataforma Conserlar:
-                  // Navigator.pushReplacement(
-                  //   context,
-                  //   MaterialPageRoute(
-                  //     builder: (context) => const MinhaTelaConserlarWeb(),
-                  //   ),
-                  // );
                 }
               });
             }
@@ -883,8 +891,11 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
             debugPrint("Erro no WebView Primeiro Acesso: ${error.description}");
             if (!mounted) return;
 
-            // SE JÁ SALVOU, IGNOIRA O ERRO DA PLACA REINICIANDO!
-            if (_isSaving) return;
+            // Se estiver salvando, IGNOIRA o erro da desconexão Wi-Fi do ESP32
+            if (_isSaving) {
+              debugPrint("Erro ignorado: ESP32 reiniciando após salvar redes.");
+              return;
+            }
 
             setState(() {
               _isLoadingWebView = false;
