@@ -125,6 +125,11 @@
             android:exported="false"
             android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar" />
 
+        <activity
+            android:name=".PrimeiroTrava"
+            android:exported="false"
+            android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar" />
+
         <!-- Serviço Bluetooth em Segundo Plano -->
         <service
             android:name=".BluetoothService"

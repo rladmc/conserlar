@@ -813,17 +813,28 @@ class PrimeiroAcessoWebViewView extends StatefulWidget {
 
 class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
   late final WebViewController controller;
-  bool isLoading = true;
-  bool hasError = false;
+
+  // Estados da conexão local
+  bool _isChecking = true;
+  bool _deviceFound = false;
+  bool _showWebView = false;
+  bool _isLoadingWebView = false;
+  bool _webViewError = false;
+
+  int _secondsRemaining = 10;
+  Timer? _countdownTimer;
 
   @override
   void initState() {
     super.initState();
     _inicializarWebView();
+    _iniciarVerificacaoConexao();
+  }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _mostrarGuiaParaIphone(context);
-    });
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
   }
 
   void _inicializarWebView() {
@@ -832,15 +843,17 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
+            if (!mounted) return;
             setState(() {
-              isLoading = true;
-              hasError = false;
+              _isLoadingWebView = true;
+              _webViewError = false;
             });
           },
           onPageFinished: (String url) {
+            if (!mounted) return;
             setState(() {
-              isLoading = false;
-              hasError = false;
+              _isLoadingWebView = false;
+              _webViewError = false;
             });
             if (url.contains("/salvar")) {
               Future.delayed(const Duration(seconds: 2), () {
@@ -852,212 +865,266 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
           },
           onWebResourceError: (WebResourceError error) {
             debugPrint("Erro no WebView Primeiro Acesso: ${error.description}");
+            if (!mounted) return;
             setState(() {
-              isLoading = false;
-              hasError = true;
+              _isLoadingWebView = false;
+              _webViewError = true;
             });
           },
         ),
-      )
-      ..loadRequest(Uri.parse('http://192.168.4.1'));
+      );
   }
 
-  void _recarregarPagina() {
+  Future<void> _iniciarVerificacaoConexao() async {
     setState(() {
-      isLoading = true;
-      hasError = false;
+      _isChecking = true;
+      _deviceFound = false;
+      _secondsRemaining = 10;
     });
-    controller.reload();
+
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_secondsRemaining > 1) {
+        setState(() {
+          _secondsRemaining--;
+        });
+      } else {
+        timer.cancel();
+      }
+    });
+
+    try {
+      // Tenta conexão TCP no IP do testador com timeout de 10 segundos
+      final socket = await Socket.connect(
+        '192.168.4.1',
+        80,
+        timeout: const Duration(seconds: 10),
+      );
+
+      socket.destroy();
+
+      _countdownTimer?.cancel();
+      if (!mounted) return;
+
+      setState(() {
+        _isChecking = false;
+        _deviceFound = true;
+      });
+    } catch (e) {
+      debugPrint("Não foi possível conectar ao IP 192.168.4.1: $e");
+      _countdownTimer?.cancel();
+      if (!mounted) return;
+
+      setState(() {
+        _isChecking = false;
+        _deviceFound = false;
+      });
+    }
   }
 
-  void _mostrarGuiaParaIphone(BuildContext context) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1E272C),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: const BorderSide(color: Color(0xFFF1C40F), width: 2),
-          ),
-          title: const Row(
-            children: [
-              Icon(Icons.wifi, color: Color(0xFFF1C40F), size: 28),
-              SizedBox(width: 10),
-              Text(
-                "Conexão Wi-Fi da Placa",
-                style: TextStyle(color: Colors.white, fontSize: 18),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                "Para configurar o seu testador, conecte o celular na rede Wi-Fi correspondente:",
-                style: TextStyle(color: Color(0xFFBDC3C7), fontSize: 14),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.black45,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.green, width: 1.5),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.wifi, color: Colors.green, size: 20),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        "ConsertestScan - XXXX",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                "1️⃣ Abra os **Ajustes > Wi-Fi** do seu celular.\n2️⃣ Conecte na rede do seu testador.\n3️⃣ Retorne a esta página para salvar suas redes Wi-Fi.",
-                style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
-              ),
-            ],
-          ),
-          actions: [
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF238C00),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: const Text(
-                  "ENTENDIDO",
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                ),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-              ),
-            ),
-          ],
-        );
-      },
-    );
+  void _abrirWebView() {
+    setState(() {
+      _showWebView = true;
+    });
+    controller.loadRequest(Uri.parse('http://192.168.4.1'));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF1E272C),
       appBar: AppBar(
         backgroundColor: const Color(0xFF37474F),
-        title: const Text("Primeiro Acesso - Configuração", style: TextStyle(color: Colors.white, fontSize: 16)),
+        title: const Text(
+          "Configuração de Wi-Fi",
+          style: TextStyle(color: Colors.white, fontSize: 16),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline, color: Color(0xFFF1C40F)),
-            onPressed: () => _mostrarGuiaParaIphone(context),
-            tooltip: "Ajuda com o Wi-Fi",
-          ),
-        ],
       ),
       body: SafeArea(
-        child: Stack(
-          children: [
-            WebViewWidget(controller: controller),
-            if (hasError)
-              Container(
-                color: const Color(0xFF37474F),
-                padding: const EdgeInsets.all(24),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.wifi_off_rounded,
-                        size: 70,
-                        color: Color(0xFFF1C40F),
+        child: _showWebView ? _buildWebViewLayout() : _buildStatusScreen(),
+      ),
+    );
+  }
+
+  Widget _buildStatusScreen() {
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Center(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // 1. Verificando Conexão
+              if (_isChecking) ...[
+                const SizedBox(
+                  height: 70,
+                  width: 70,
+                  child: CircularProgressIndicator(
+                    color: Color(0xFFF1C40F),
+                    strokeWidth: 6,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  "Buscando ConserTestScan...",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  "Verificando rede no IP 192.168.4.1 ($_secondsRemaining s)",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Color(0xFFBDC3C7), fontSize: 14),
+                ),
+              ]
+
+              // 2. Equipamento Encontrado
+              else if (_deviceFound) ...[
+                const Icon(
+                  Icons.check_circle_outline_rounded,
+                  size: 80,
+                  color: Colors.green,
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  "ConserTestScan Encontrado!",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  "Conexão com a placa estabelecida com sucesso. Clique abaixo para configurar.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Color(0xFFBDC3C7), fontSize: 14),
+                ),
+                const SizedBox(height: 30),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF238C00),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      const SizedBox(height: 20),
-                      const Text(
-                        "Aguardando Conexão com a Placa",
-                        textAlign: TextAlign.center,
+                    ),
+                    icon: const Icon(Icons.arrow_forward, color: Colors.white),
+                    label: const Text(
+                      "ACESSAR CONSERTESTSCAN",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    onPressed: _abrirWebView,
+                  ),
+                ),
+              ]
+
+              // 3. Não Encontrado
+              else ...[
+                  const Icon(
+                    Icons.wifi_off_rounded,
+                    size: 70,
+                    color: Color(0xFFF1C40F),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    "ConserTestScan Não Encontrado",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    "Certifique-se de que o celular está conectado na rede Wi-Fi da placa:\n\n👉 ConsertestScan - XXXX\n\nInstruções:\n1. Acesse Ajustes > Wi-Fi no iOS\n2. Conecte na rede do seu testador\n3. Retorne e toque em Tentar Novamente.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFFBDC3C7),
+                      fontSize: 14,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF238C00),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.refresh, color: Colors.white),
+                      label: const Text(
+                        "TENTAR NOVAMENTE",
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 20,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        "Certifique-se de que o seu celular está conectado na rede Wi-Fi correspondente ao seu testador:\n\n👉 ConsertestScan - XXXX\n\nAssim que conectar, retorne e toque no botão abaixo.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Color(0xFFBDC3C7),
-                          fontSize: 14,
-                          height: 1.4,
-                        ),
-                      ),
-                      const SizedBox(height: 30),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF238C00),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          icon: const Icon(Icons.refresh, color: Colors.white),
-                          label: const Text(
-                            "TENTAR NOVAMENTE",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          onPressed: _recarregarPagina,
-                        ),
-                      ),
-                      const SizedBox(height: 15),
-                      TextButton.icon(
-                        icon: const Icon(Icons.help_outline, color: Color(0xFFF1C40F), size: 18),
-                        label: const Text(
-                          "Ver Instruções de Conexão",
-                          style: TextStyle(color: Color(0xFFF1C40F), fontSize: 13),
-                        ),
-                        onPressed: () => _mostrarGuiaParaIphone(context),
-                      ),
-                    ],
+                      onPressed: _iniciarVerificacaoConexao,
+                    ),
                   ),
-                ),
-              ),
-            if (isLoading && !hasError)
-              const Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xFF238C00),
-                ),
-              ),
-          ],
+                ],
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildWebViewLayout() {
+    return Stack(
+      children: [
+        WebViewWidget(controller: controller),
+        if (_isLoadingWebView && !_webViewError)
+          const Center(
+            child: CircularProgressIndicator(color: Color(0xFF238C00)),
+          ),
+        if (_webViewError)
+          Container(
+            color: const Color(0xFF1E272C),
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 70, color: Colors.red),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Erro ao carregar a página da placa.",
+                    style: TextStyle(color: Colors.white, fontSize: 18),
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: () => controller.reload(),
+                    child: const Text("Recarregar Página"),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
