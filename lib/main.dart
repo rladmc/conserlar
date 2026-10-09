@@ -837,6 +837,8 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
     super.dispose();
   }
 
+  bool _isSaving = false; // Flag para ignorar erros pós-salvamento
+
   void _inicializarWebView() {
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -851,14 +853,28 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
           },
           onPageFinished: (String url) {
             if (!mounted) return;
+
             setState(() {
               _isLoadingWebView = false;
               _webViewError = false;
             });
+
+            // Se a URL contém /salvar, marca que salvou com sucesso
             if (url.contains("/salvar")) {
-              Future.delayed(const Duration(seconds: 2), () {
+              _isSaving = true; // Ignora erros de rede a partir daqui
+
+              Future.delayed(const Duration(seconds: 3), () {
                 if (mounted) {
+                  // Opção A: Apenas fecha a tela e volta pro app
                   Navigator.pop(context);
+
+                  // Opção B: Se quiser abrir direto a plataforma Conserlar:
+                  // Navigator.pushReplacement(
+                  //   context,
+                  //   MaterialPageRoute(
+                  //     builder: (context) => const MinhaTelaConserlarWeb(),
+                  //   ),
+                  // );
                 }
               });
             }
@@ -866,6 +882,10 @@ class _PrimeiroAcessoWebViewViewState extends State<PrimeiroAcessoWebViewView> {
           onWebResourceError: (WebResourceError error) {
             debugPrint("Erro no WebView Primeiro Acesso: ${error.description}");
             if (!mounted) return;
+
+            // SE JÁ SALVOU, IGNOIRA O ERRO DA PLACA REINICIANDO!
+            if (_isSaving) return;
+
             setState(() {
               _isLoadingWebView = false;
               _webViewError = true;
